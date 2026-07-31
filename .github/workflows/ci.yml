@@ -1,0 +1,147 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+
+      - name: Marketplace and plugin manifests agree
+        run: |
+          python3 - <<'PY'
+          import json, re, sys
+          from pathlib import Path
+
+          errors = []
+          market = json.loads(Path(".claude-plugin/marketplace.json").read_text())
+
+          for key in ("name", "owner", "plugins"):
+              if key not in market:
+                  errors.append(f"marketplace.json: missing required key {key!r}")
+
+          for entry in market.get("plugins", []):
+              name, source = entry.get("name"), entry.get("source")
+              if not name or not source:
+                  errors.append(f"marketplace.json: entry needs name+source: {entry}")
+                  continue
+              if not re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", name):
+                  errors.append(f"{name}: not kebab-case (rejected by the claude.ai sync)")
+              # `version` in the marketplace entry is masked by plugin.json and
+              # silently desyncs update-detection. Keep it in one place.
+              if "version" in entry:
+                  errors.append(f"{name}: drop 'version' from the marketplace entry; plugin.json owns it")
+              if not isinstance(source, str):
+                  continue  # git-subdir sources are not local paths
+              manifest = Path(source) / ".claude-plugin" / "plugin.json"
+              if not manifest.is_file():
+                  errors.append(f"{name}: no plugin.json at {manifest}")
+                  continue
+              m = json.loads(manifest.read_text())
+              if m.get("name") != name:
+                  errors.append(f"{name}: plugin.json name is {m.get('name')!r}, must match the marketplace entry")
+              if not re.fullmatch(r"\d+\.\d+\.\d+", str(m.get("version", ""))):
+                  errors.append(f"{name}: plugin.json version {m.get('version')!r} is not semver")
+              if not m.get("description"):
+                  errors.append(f"{name}: plugin.json has no description")
+
+          for e in errors:
+              print(f"::error::{e}", file=sys.stderr)
+          sys.exit(1 if errors else 0)
+          PY
+
+      - name: Remote MCP servers are well-formed and carry no secrets
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          from pathlib import Path
+
+          errors = []
+          for cfg in Path("plugins").glob("*/.mcp.json"):
+              servers = json.loads(cfg.read_text()).get("mcpServers", {})
+              for name, s in servers.items():
+                  where = f"{cfg}:{name}"
+                  # A `url` with no `type` is read as stdio and the server is
+                  # silently skipped — no error, no tools, no clue why.
+                  if "url" in s and "type" not in s:
+                      errors.append(f"{where}: has 'url' but no 'type' — silently skipped at load")
+                  # A bearer on the transport is a credential in a public repo.
+                  if "headers" in s:
+                      errors.append(f"{where}: 'headers' must not carry a credential")
+                  if s.get("type") == "http":
+                      oauth = s.get("oauth") or {}
+                      # id.agents.university publishes no registration_endpoint, so an
+                      # unpinned client cannot register itself and the server never connects.
+                      if not oauth.get("clientId"):
+                          errors.append(f"{where}: no oauth.clientId — DCR is unavailable on this IdP")
+                      if "offline_access" not in (oauth.get("scopes") or ""):
+                          errors.append(f"{where}: oauth.scopes omits offline_access — no refresh token")
+
+          for e in errors:
+              print(f"::error::{e}", file=sys.stderr)
+          sys.exit(1 if errors else 0)
+          PY
+
+      - name: Skill, agent and command frontmatter is valid
+        run: |
+          python3 - <<'PY'
+          import re, sys, yaml
+          from pathlib import Path
+
+          SCOPES = {"skills", "agents", "commands"}
+          errors = []
+          for path in Path("plugins").rglob("*.md"):
+              if not (SCOPES & set(path.parts)):
+                  continue
+              m = re.match(r"^---\n(.*?)\n---\n", path.read_text(encoding="utf-8"), re.DOTALL)
+              if not m:
+                  errors.append(f"{path}: no frontmatter delimited by ---")
+                  continue
+              try:
+                  fm = yaml.safe_load(m.group(1))
+              except yaml.YAMLError as exc:
+                  errors.append(f"{path}: invalid YAML — {exc}")
+                  continue
+              if not isinstance(fm, dict):
+                  errors.append(f"{path}: frontmatter is not a mapping")
+                  continue
+              for required in ("name", "description"):
+                  if required not in fm:
+                      errors.append(f"{path}: missing required field {required!r}")
+              tools = fm.get("tools") or []
+              if isinstance(tools, str):
+                  tools = [tools]
+              for tool in tools:
+                  # Plugin-bundled MCP tools register as mcp__plugin_<plugin>_<server>__<tool>.
+                  # The bare form matches nothing and silently yields zero tools.
+                  if isinstance(tool, str) and tool.startswith("mcp__") and not tool.startswith("mcp__plugin_"):
+                      errors.append(f"{path}: tool {tool!r} uses the pre-plugin MCP prefix; it never resolves")
+
+          for e in errors:
+              print(f"::error::{e}", file=sys.stderr)
+          sys.exit(1 if errors else 0)
+          PY
+
+      - name: Python scripts compile
+        run: python3 -m compileall -q plugins
+
+      - name: No credentials or internal infrastructure names
+        run: |
+          set +e
+          # Nothing here should ever carry a live credential, and this is a public
+          # repo: internal GCP project / Secret Manager names do not belong either.
+          pattern='ak_8hats_|BEGIN [A-Z ]*PRIVATE KEY|hats8-auth|auth-idp-jwks-keys|SEED_SERVICE_SECRET'
+          hits=$(grep -RInE "$pattern" . --exclude-dir=.git --exclude-dir=.github)
+          if [ -n "$hits" ]; then
+            echo "$hits" | while IFS= read -r line; do echo "::error::$line"; done
+            exit 1
+          fi
+          echo "clean"

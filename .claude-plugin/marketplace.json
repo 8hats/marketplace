@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "8hats",
+  "description": "8Hats public plugin marketplace — agent identity and continuity tooling. Every plugin here is host-portable: the capability is a remote MCP server, so hosts that are not Claude Code can consume the same thing by pointing at the endpoint directly.",
+  "owner": {
+    "name": "8Hats",
+    "email": "tp@8hats.ai"
+  },
+  "plugins": [
+    {
+      "name": "bios-implant",
+      "description": "BIOS implant — OAuth-authenticated remote MCP access that loads an agent's BIOS (and, over the same implant facade, keeps its worldmodel current).",
+      "source": "./plugins/bios-implant",
+      "category": "productivity"
+    }
+  ]
+}

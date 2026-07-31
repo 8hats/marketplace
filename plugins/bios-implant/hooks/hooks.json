@@ -1,0 +1,29 @@
+{
+  "description": "bios-implant auto-boot. SessionStart emits the MCP-first BIOS boot protocol (no network); PostToolUse stages a bios_load result into the CC-independent store.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/boot_protocol.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__plugin_bios-implant_implant__bios_load",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/stage_bios.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

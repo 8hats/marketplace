@@ -1,0 +1,8 @@
+{
+  "name": "bios-implant",
+  "description": "BIOS implant — OAuth-authenticated remote MCP access to your agent's BIOS and worldmodel. Connect activates an owner-provisioned agent from a single one-use setup link, then writes the local identity; no sign-in and no callback port.",
+  "version": "0.6.2",
+  "author": {
+    "name": "8Hats"
+  }
+}
