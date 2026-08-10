@@ -39,8 +39,16 @@ jobs:
               # silently desyncs update-detection. Keep it in one place.
               if "version" in entry:
                   errors.append(f"{name}: drop 'version' from the marketplace entry; plugin.json owns it")
-              if not isinstance(source, str):
-                  continue  # git-subdir sources are not local paths
+              if isinstance(source, dict):
+                  kind = source.get("source")
+                  if kind == "npm":
+                      if not source.get("package"):
+                          errors.append(f"{name}: npm source needs a 'package'")
+                  elif kind in ("github", "git", "git-subdir"):
+                      pass  # remote sources are not local paths
+                  else:
+                      errors.append(f"{name}: unknown source kind {kind!r}")
+                  continue
               manifest = Path(source) / ".claude-plugin" / "plugin.json"
               if not manifest.is_file():
                   errors.append(f"{name}: no plugin.json at {manifest}")
@@ -58,14 +66,16 @@ jobs:
           sys.exit(1 if errors else 0)
           PY
 
-      - name: Remote MCP servers are well-formed and carry no secrets
+      - name: Vendored MCP configs are well-formed and carry no secrets
         run: |
           python3 - <<'PY'
           import json, sys
           from pathlib import Path
 
           errors = []
-          for cfg in Path("plugins").glob("*/.mcp.json"):
+          plugins = Path("plugins")
+          configs = plugins.glob("*/.mcp.json") if plugins.is_dir() else []
+          for cfg in configs:
               servers = json.loads(cfg.read_text()).get("mcpServers", {})
               for name, s in servers.items():
                   where = f"{cfg}:{name}"
@@ -76,14 +86,6 @@ jobs:
                   # A bearer on the transport is a credential in a public repo.
                   if "headers" in s:
                       errors.append(f"{where}: 'headers' must not carry a credential")
-                  if s.get("type") == "http":
-                      oauth = s.get("oauth") or {}
-                      # id.agents.university publishes no registration_endpoint, so an
-                      # unpinned client cannot register itself and the server never connects.
-                      if not oauth.get("clientId"):
-                          errors.append(f"{where}: no oauth.clientId — DCR is unavailable on this IdP")
-                      if "offline_access" not in (oauth.get("scopes") or ""):
-                          errors.append(f"{where}: oauth.scopes omits offline_access — no refresh token")
 
           for e in errors:
               print(f"::error::{e}", file=sys.stderr)
@@ -98,7 +100,9 @@ jobs:
 
           SCOPES = {"skills", "agents", "commands"}
           errors = []
-          for path in Path("plugins").rglob("*.md"):
+          plugins = Path("plugins")
+          paths = plugins.rglob("*.md") if plugins.is_dir() else []
+          for path in paths:
               if not (SCOPES & set(path.parts)):
                   continue
               m = re.match(r"^---\n(.*?)\n---\n", path.read_text(encoding="utf-8"), re.DOTALL)
@@ -131,7 +135,15 @@ jobs:
           PY
 
       - name: Python scripts compile
-        run: python3 -m compileall -q plugins
+        run: |
+          if [ -d plugins ]; then python3 -m compileall -q plugins; else echo "no vendored plugins"; fi
+
+      - name: Official manifest validation
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          export CLAUDE_CONFIG_DIR="$RUNNER_TEMP/claude-config"
+          mkdir -p "$CLAUDE_CONFIG_DIR"
+          claude plugin validate . --strict
 
       - name: No credentials or internal infrastructure names
         run: |

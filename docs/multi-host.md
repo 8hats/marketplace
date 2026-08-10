@@ -1,73 +1,58 @@
 # Using these plugins outside Claude Code
 
 Every plugin in this marketplace is built the same way: the capability is a
-**remote MCP server**, and the plugin is a thin wrapper that registers it, adds a
-skill, and wires host-specific hooks. The MCP server is the portable part. The
-plugin format is not.
+**remote MCP server**, and the plugin is a thin wrapper that registers it, adds
+skills, and wires host-specific hooks. Since 1.0.x there is a second portable
+half: the **local companion** (`implant-local`), an on-demand Node stdio MCP
+shipped inside the npm package — it owns folder binding, one-use activation,
+and last-good BIOS staging, and it runs anywhere Node ≥ 20 runs.
 
 So the question for any other host is never "does it support Claude Code
-plugins" — none of them do. It is: **can this host authenticate to the server?**
+plugins" — none of them do. It is: **can this host authenticate to the remote
+server, and can it run the local companion?**
 
-## The honest status, as of 2026-07-31
+## The status, as of 2026-08-10
 
-Claude Code is the only host that can connect today. This is a property of the
-8hats identity provider, not of the marketplace or the plugin.
-
-`bios-implant` talks to `https://implant.agents.university/mcp`, which delegates
-authentication to `https://id.agents.university`. Two facts about that
-authorization server decide everything below, and both are directly observable:
+The 2026-07-31 revision of this document said Claude Code was the only host
+that could connect, because the IdP had no Dynamic Client Registration and the
+`bios-implant` client accepted exactly one redirect URI. Both facts have since
+changed on the IdP, and both are directly observable:
 
 ```console
-$ curl -s https://id.agents.university/.well-known/oauth-authorization-server | jq '.registration_endpoint'
-null
+$ curl -s https://id.agents.university/.well-known/openid-configuration | jq -r '.registration_endpoint'
+https://id.agents.university/reg
 ```
 
-1. **No `registration_endpoint`.** The server does not implement RFC 7591 Dynamic
-   Client Registration, and does not advertise Client ID Metadata Documents. A
-   host cannot register itself as an OAuth client on the fly — which is exactly
-   how Cursor, VS Code, Codex, Gemini CLI and the hosted Claude connectors all
-   expect to obtain a `client_id`.
+1. **RFC 7591 Dynamic Client Registration is live.** Hosts that self-register —
+   VS Code, Cursor, Gemini CLI, hosted Claude connectors, `mcp-remote`, Codex's
+   generic flow — can now obtain a `client_id` on the fly. The endpoint
+   validates registrations (an empty one is rejected with
+   `redirect_uris is mandatory property`); it is not a stub.
 
-2. **The `bios-implant` client has exactly one registered redirect URI**, and it
-   is matched literally:
+2. **The static `bios-implant` client now accepts two pinned redirect URIs**,
+   still matched literally:
 
-   | `redirect_uri` presented to `/auth` | Result |
+   | `redirect_uri` presented to `/auth` (client `bios-implant`) | Result |
    |---|---|
-   | `http://localhost:8484/callback` | `303` — accepted |
-   | `http://127.0.0.1:8484/callback` | `400` — rejected |
-   | `http://localhost:33418/callback` | `400` — rejected |
-   | `http://localhost:8484/oauth/callback` | `400` — rejected |
-   | `https://claude.ai/api/mcp/auth_callback` | `400` — rejected |
+   | `http://localhost:8484/callback` | `303` — accepted (Claude Code) |
+   | `http://127.0.0.1:8486/callback/dXk1HafgCxhy` | `303` — accepted (Codex, installer-pinned) |
+   | `https://claude.ai/api/mcp/auth_callback` | `400` — rejected on this client; hosted surfaces register their own client via DCR instead |
 
-Claude Code succeeds because the plugin pins both halves — `clientId:
-"bios-implant"` and `callbackPort: 8484` — producing that one accepted URI.
+The hard IdP-side blocker is gone. What remains is per-host verification: a
+configuration below is **prepared** until someone completes an OAuth
+round-trip on that host and sees tools.
 
-The consequences are worth stating plainly rather than discovering them in a
-support thread:
+Current standing:
 
-- **Hosted surfaces (Claude apps / Cowork custom connectors) cannot connect.**
-  Their callback is an Anthropic-hosted HTTPS URL, and they rely on DCR. Both
-  conditions fail.
-- **The usual universal fallback does not rescue this.** `mcp-remote` can pin a
-  static client with `--static-oauth-client-info`, but its redirect path is
-  `/oauth/callback`, which the IdP rejects on any port.
-- **Hosts that pick a random loopback port cannot connect**, even with the right
-  client id.
-
-### What would unblock the rest
-
-One of these, on `8hats/auth` — not in this repository:
-
-1. **Enable RFC 7591 Dynamic Client Registration.** Broadest fix: nearly every
-   host below starts working generically, with no per-host registration.
-2. **Add redirect URIs to the `bios-implant` client** — at minimum
-   `http://127.0.0.1:8484/callback` and `http://localhost:8484/oauth/callback`
-   (the `mcp-remote` path), which together cover most desktop hosts.
-3. **Register a separate public client per host family**, including the hosted
-   Claude callback for Cowork.
-
-Until one of those lands, treat the configurations below as *prepared and
-verified-as-syntax*, not as working installs.
+- **Verified end-to-end**: Claude Code — marketplace install, server-managed
+  OAuth, boot protocol, local staging.
+- **Installer-managed**: Claude Desktop / Local Cowork (native plugin
+  registration, verified by plugin-list readback) and Codex (registration +
+  pinned callback). Run
+  `npx -y @agentuniversity/bios-implant@latest install --yes` — see the
+  [README](../README.md).
+- **Prepared, awaiting first verified round-trip**: hosted Claude connectors,
+  Cursor, VS Code, Gemini CLI, Zed, Windsurf, `mcp-remote`.
 
 ---
 
@@ -78,8 +63,8 @@ verified-as-syntax*, not as working installs.
 /plugin install bios-implant@8hats
 ```
 
-Then `/mcp` → `bios-implant` → authenticate. This is the only path that gets the
-session boot protocol and BIOS staging, because those are hooks.
+Then `/mcp` → `implant` → authenticate. This path gets the session boot
+protocol from a hook and BIOS staging through the bundled local companion.
 
 Non-interactive equivalent, for provisioning a fleet via `settings.json`:
 
@@ -92,45 +77,45 @@ Non-interactive equivalent, for provisioning a fleet via `settings.json`:
 }
 ```
 
-## Claude Cowork / Claude desktop & web connectors — blocked on the IdP
+## Claude Desktop / Local Cowork — installer-managed
 
-The mechanism is Settings → Connectors → *Add custom connector* → the server URL:
+Use the npm installer from the README; it registers the native desktop plugin
+and verifies it. Do **not** use Settings → Connectors → *Add custom connector*
+for Local Cowork — the native plugin path is the supported one and carries the
+skills and the local companion.
+
+## Hosted Claude connectors (claude.ai / desktop connectors) — prepared
+
+The mechanism is Settings → Connectors → *Add custom connector* → the server
+URL:
 
 ```
 https://implant.agents.university/mcp
 ```
 
-This is the correct instruction and it will fail at the redirect check until the
-hosted callback is registered or DCR is enabled. Do not hand this to a user as a
-working step yet.
+With DCR live, the hosted callback registers its own client automatically.
+This gives the remote half only: no skills, no hooks, no local companion, no
+staged fallback. Verify a full OAuth round-trip before handing this to a user
+as a working step.
 
-Skills are the portable half of the plugin — `SKILL.md` is a shared format across
-the Anthropic stack. Hooks and the Python scripts are not portable: a hosted
-surface has no hook runner and no local filesystem, so the local identity write
-has no meaning there.
+## OpenAI Codex — installer-managed
 
-## OpenAI Codex — blocked on the IdP
-
-`~/.codex/config.toml`:
-
-```toml
-[mcp_servers.implant]
-url = "https://implant.agents.university/mcp"
+```sh
+npx -y @agentuniversity/bios-implant@latest install --yes --harness codex
 ```
 
+The installer registers `implant` and `implant-local` for Codex and pins the
+callback pair in `~/.codex/config.toml`. In a new session:
+
 ```console
-$ codex mcp add implant --url https://implant.agents.university/mcp
 $ codex mcp login implant
 ```
 
-`codex mcp login` performs authorization-code + PKCE with Dynamic Client
-Registration. With no `registration_endpoint`, it cannot obtain a `client_id`.
+Codex reads `AGENTS.md`, not hooks — see the
+[repository `AGENTS.md`](../AGENTS.md) for the boot protocol in a form Codex
+will actually load, and run the `boot` skill at session start.
 
-Codex has no hooks and no `SKILL.md` loader. It does read `AGENTS.md` — see the
-[repository `AGENTS.md`](../AGENTS.md) for the boot protocol in a form Codex will
-actually load.
-
-## Cursor — blocked on the IdP
+## Cursor — prepared
 
 `~/.cursor/mcp.json` (or `<repo>/.cursor/mcp.json`):
 
@@ -142,7 +127,7 @@ actually load.
 }
 ```
 
-## VS Code + GitHub Copilot — blocked on the IdP
+## VS Code + GitHub Copilot — prepared
 
 `<repo>/.vscode/mcp.json` — note the key is `servers`, not `mcpServers`:
 
@@ -157,12 +142,11 @@ actually load.
 }
 ```
 
-VS Code has the most complete OAuth implementation of any host here (DCR + PKCE,
-tokens in the OS keychain). It is blocked only by the missing
-`registration_endpoint`, so it would be the first to work if option 1 above is
-taken.
+VS Code has the most complete OAuth implementation of any host here (DCR +
+PKCE, tokens in the OS keychain). It was blocked only by the missing
+`registration_endpoint`, so it is the first candidate to verify.
 
-## Gemini CLI — blocked on the IdP
+## Gemini CLI — prepared
 
 `~/.gemini/settings.json`. Use `httpUrl`; plain `url` means SSE and will not
 negotiate against a streamable-HTTP server:
@@ -175,7 +159,7 @@ negotiate against a streamable-HTTP server:
 }
 ```
 
-## Zed — blocked on the IdP
+## Zed — prepared
 
 `~/.config/zed/settings.json`. Zed calls these *context servers*:
 
@@ -190,7 +174,7 @@ negotiate against a streamable-HTTP server:
 }
 ```
 
-## Windsurf — blocked on the IdP
+## Windsurf — prepared
 
 `~/.codeium/windsurf/mcp_config.json`. Note the key is `serverUrl`:
 
@@ -202,36 +186,56 @@ negotiate against a streamable-HTTP server:
 }
 ```
 
-## Any stdio-only host, once redirect URIs are added
+## Any stdio-only host — prepared
 
-`mcp-remote` proxies a remote OAuth server over stdio. It becomes viable the
-moment `http://localhost:<port>/oauth/callback` is a registered redirect URI:
+`mcp-remote` proxies a remote OAuth server over stdio and performs DCR itself:
 
 ```json
 {
   "mcpServers": {
     "implant": {
       "command": "npx",
-      "args": [
-        "-y", "mcp-remote", "https://implant.agents.university/mcp", "8484",
-        "--static-oauth-client-info", "{\"client_id\":\"bios-implant\"}"
-      ]
+      "args": ["-y", "mcp-remote", "https://implant.agents.university/mcp"]
     }
   }
 }
 ```
 
-Tokens cache in `~/.mcp-auth/`; clear that directory to force re-authentication.
+Tokens cache in `~/.mcp-auth/`; clear that directory to force
+re-authentication.
+
+## Running the local companion on other hosts — advanced
+
+The remote configs above give `bios_load` / `wm_load` only. Folder binding,
+one-use activation, and last-good staging need the local companion. It is not
+Claude-specific — any host that can spawn a stdio MCP can run it:
+
+```sh
+npm install -g @agentuniversity/bios-implant
+```
+
+```json
+{
+  "mcpServers": {
+    "implant-local": {
+      "command": "node",
+      "args": ["<global npm root>/@agentuniversity/bios-implant/dist/local-mcp.mjs"]
+    }
+  }
+}
+```
+
+(`npm root -g` prints the global root. The companion is on-demand stdio; it
+never runs as a daemon. State lives under `~/.agent-university`.)
 
 ---
 
-## What no other host gets, regardless of auth
+## What only Claude Code automates
 
-Claude Code hooks have no equivalent anywhere else. On every other host:
-
-- The **SessionStart boot protocol** does not fire. The agent must be told to
-  call `bios_load` itself — that is what `AGENTS.md` is for.
-- **BIOS staging** (`PostToolUse`) does not fire, so there is no local last-good
-  BIOS to fall back on when the service is unreachable.
-- `${CLAUDE_PLUGIN_ROOT}` does not exist. `scripts/connect_agent.py` still runs
-  under plain `python3`, but it must be invoked with a real path.
+- The **SessionStart boot protocol** fires from a hook. On every other host the
+  agent must be told to boot — that is what `AGENTS.md` is for.
+- **Skills** (`install` / `connect` / `boot` / `doctor`) load natively in
+  Claude Code and Cowork. Codex gets portable variants from the installer;
+  bare-MCP hosts get none and follow `AGENTS.md` instead.
+- Everything else — activation, binding, staging, health — is the local
+  companion, and it runs wherever Node does.

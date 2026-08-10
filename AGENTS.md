@@ -10,8 +10,10 @@ If you are on such a host, copy this file to your project root (or
 `agent_id` your owner provisioned.
 
 Prerequisite: the `implant` MCP server must be configured and authenticated. See
-[`docs/multi-host.md`](docs/multi-host.md) — note that on hosts other than Claude
-Code, authentication is currently blocked at the identity provider.
+[`docs/multi-host.md`](docs/multi-host.md) for per-host configuration — the
+identity provider supports Dynamic Client Registration, so most MCP-OAuth hosts
+can obtain a client automatically; treat hosts not yet verified there as
+"prepared" rather than guaranteed.
 
 ---
 
@@ -66,13 +68,16 @@ you how to read the worldmodel result.
 
 ## What you do not get on this host
 
-Claude Code stages every successful `bios_load` to a local store, so a later
-session can fall back to the last-good BIOS when the service is down. No other
-host does this. On `unavailable`, you have nothing cached — say so rather than
-implying a BIOS was loaded.
+Hosts running the **local companion** (`implant-local` — bundled by the plugin
+in Claude Code and by the npx installer for Cowork and Codex) stage every
+successful `bios_load` to a local store, so a later session can fall back to
+the last-good BIOS when the service is down. A bare remote-MCP host has no
+companion and nothing cached — on `unavailable`, say so rather than implying a
+BIOS was loaded.
 
-Activation (binding an `agent_id` to an owner) is a separate, one-time flow driven
-by a one-use link the owner hands you. It is described in the served document
-itself, not here. The local write step it delegates to requires
-`scripts/connect_agent.py` from the `bios-implant` plugin, invoked with a real
-path on hosts that have no `${CLAUDE_PLUGIN_ROOT}`.
+Activation (binding an `agent_id` to an exact folder) is a separate, one-time
+flow driven by a one-use setup URL the owner hands you. It requires the local
+companion: give the URL only to the `connect` skill (or the `local_activate`
+tool) from the exact folder you want bound. On a host without the companion
+there is no supported activation — bind from a supported host first; the
+binding lives on that machine.
