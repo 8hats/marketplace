@@ -142,6 +142,11 @@ jobs:
         with:
           node-version: 22
 
+      - name: bios-implant test suite
+        run: |
+          cd plugins/bios-implant
+          node --test
+
       - name: npm-sourced plugins resolve on the registry
         run: |
           python3 - <<'PY'

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "agent-university",
+  "owner": {
+    "name": "Agent University"
+  },
+  "description": "Agent University plugins for persistent agent identity and worldmodel access.",
+  "plugins": [
+    {
+      "name": "bios-implant",
+      "description": "Agent University BIOS and worldmodel plugin with Local Companion support.",
+      "source": "./",
+      "category": "Developer Tools"
+    }
+  ]
+}

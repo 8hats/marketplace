@@ -1,0 +1,4 @@
+interface:
+  display_name: "Connect BIOS Implant"
+  short_description: "Bind a workspace to an Agent University identity"
+  default_prompt: "Use $connect to bind this workspace to my Agent University BIOS."

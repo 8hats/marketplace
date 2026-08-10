@@ -3,12 +3,14 @@
 Public plugin marketplace for 8Hats / Agent University — agent identity and
 continuity tooling.
 
-The flagship plugin is **bios-implant**. Its payload is distributed as the
-public npm package
-[`@agentuniversity/bios-implant`](https://www.npmjs.com/package/@agentuniversity/bios-implant);
-the marketplace entry here **sources that npm package directly**, so an install
-always pulls the latest published release and there is no vendored copy in this
-repository to drift out of date.
+The flagship plugin is **bios-implant**, and it **lives in this repository**
+(`plugins/bios-implant`) — manifest, skills, hooks, the local companion MCP
+(`src/` + `dist/`), and its full test suite. Installing from this marketplace
+serves exactly what this repo carries; releasing a change is a version bump
+plus a push, with no npm publish in the loop. The npm package
+[`@agentuniversity/bios-implant`](https://www.npmjs.com/package/@agentuniversity/bios-implant)
+remains as the frozen channel behind the npx installer (Cowork/Codex), at
+1.0.14.
 
 ## What bios-implant is
 
@@ -95,6 +97,10 @@ Agent-driven bootstrap: point the agent at
 <https://app.agents.university/bios-implant/SETUP.md> and let it follow the
 document to completion.
 
+Note: the npx channel installs the last **npm** release — frozen at 1.0.14.
+The live, versioned channel is this marketplace (Claude Code, and the desktop
+app's plugin browser).
+
 ## Install — Codex
 
 ```sh
@@ -105,7 +111,8 @@ The installer registers the MCPs and pins the exact OAuth callback Codex needs
 in `~/.codex/config.toml` (an existing conflicting value is preserved, never
 overwritten). In a new Codex session, run `codex mcp login implant` if
 authorization is required, then run the `boot` skill — Codex has no hook
-runner, so boot does not fire by itself (expected in v1).
+runner, so boot does not fire by itself (expected in v1). The npx channel
+serves the frozen npm 1.0.14.
 
 ## Host-side doctor, update, uninstall
 
@@ -142,20 +149,24 @@ boot protocol that Claude Code injects from a hook.
 ```
 .
 ├── .claude-plugin/
-│   └── marketplace.json   ← the marketplace index; bios-implant sources npm
-├── docs/multi-host.md     ← per-host configuration and verification status
-└── AGENTS.md              ← boot protocol for hook-less hosts
+│   └── marketplace.json      ← the marketplace index
+├── plugins/bios-implant/     ← the plugin: manifest, skills, hooks, local
+│                                companion MCP (src/ + dist/), test suite
+├── docs/multi-host.md        ← per-host configuration and status
+└── AGENTS.md                 ← boot protocol for hook-less hosts
 ```
 
-The plugin payload does not live in this repository. Source of truth is the
-private `8hats/bios-implant` repo, which publishes
-`@agentuniversity/bios-implant`; each npm release is immediately what this
-marketplace installs.
+This repository is self-contained: the marketplace serves the tree above, and
+CI runs the plugin's full `node --test` suite, strict manifest validation, and
+a secret scan on every push. The retired former homes (`8hats/bios-implant`,
+the team monorepo copy) only point here.
 
 ## Adding or updating a plugin
 
-1. **Updating bios-implant** = publishing a new npm package version. Nothing to
-   commit here; installs and `/plugin update` follow the npm `latest` tag.
+1. **Updating bios-implant** = edit `plugins/bios-implant`, bump `version` in
+   its `.claude-plugin/plugin.json` (that is what `/plugin update` compares),
+   push. CI runs the plugin's test suite, strict validation, and the secret
+   scan before anything lands on `main`.
 2. **A new plugin** needs an entry with `name` (kebab-case — the claude.ai sync
    rejects anything else) and `source` (an npm package or a relative path with
    a `.claude-plugin/plugin.json`). CI validates the manifest shape.

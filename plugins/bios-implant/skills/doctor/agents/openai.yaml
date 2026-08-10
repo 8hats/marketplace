@@ -1,0 +1,4 @@
+interface:
+  display_name: "Diagnose BIOS Implant"
+  short_description: "Verify local and authenticated BIOS Implant health"
+  default_prompt: "Use $doctor to verify BIOS Implant health in this session."

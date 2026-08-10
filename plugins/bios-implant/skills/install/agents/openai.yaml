@@ -1,0 +1,4 @@
+interface:
+  display_name: "Install BIOS Implant"
+  short_description: "Install or repair BIOS Implant in Local Cowork"
+  default_prompt: "Use $install to install or repair BIOS Implant in this Local Cowork session."

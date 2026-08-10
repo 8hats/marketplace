@@ -1,0 +1,4 @@
+interface:
+  display_name: "Boot BIOS Implant"
+  short_description: "Load remote BIOS context with safe local fallback"
+  default_prompt: "Use $boot to load my BIOS and worldmodel for this session."

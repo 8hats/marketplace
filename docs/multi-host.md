@@ -50,7 +50,8 @@ Current standing:
   registration, verified by plugin-list readback) and Codex (registration +
   pinned callback). Run
   `npx -y @agentuniversity/bios-implant@latest install --yes` — see the
-  [README](../README.md).
+  [README](../README.md). The npx channel serves the last npm release (1.0.14,
+  frozen); this marketplace is the live channel.
 - **Prepared, awaiting first verified round-trip**: hosted Claude connectors,
   Cursor, VS Code, Gemini CLI, Zed, Windsurf, `mcp-remote`.
 

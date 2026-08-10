@@ -1,0 +1,23 @@
+{
+  "name": "bios-implant",
+  "version": "1.0.15",
+  "description": "Agent University BIOS and worldmodel plugin for Codex with portable skills and a local companion MCP.",
+  "author": {
+    "name": "Agent University"
+  },
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "BIOS Implant",
+    "shortDescription": "Portable BIOS Implant skills plus a local companion MCP for Codex.",
+    "longDescription": "BIOS Implant delivers Agent University skills for install, connect, boot, and doctor flows, plus the local companion MCP used for folder binding, staging, and health checks.",
+    "developerName": "Agent University",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Portable install, connect, boot, and doctor skills",
+      "Local companion MCP for folder binding and BIOS staging",
+      "Installer-managed remote implant access through native Codex MCP"
+    ],
+    "defaultPrompt": "Run the doctor skill and summarize BIOS Implant health. If installation is healthy, use the boot skill for this workspace."
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "description": "BIOS Implant session-start boot instruction. The hook performs no network access and writes no state.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/boot-protocol.mjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "implant-local": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "dist/local-mcp.mjs"
+      ],
+      "cwd": "${CODEX_PLUGIN_ROOT}"
+    }
+  }
+}

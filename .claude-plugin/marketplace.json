@@ -10,10 +10,7 @@
     {
       "name": "bios-implant",
       "description": "Agent University BIOS and worldmodel plugin: OAuth-backed remote implant MCP plus a local companion MCP for exact-folder binding, one-use setup activation, last-good BIOS staging, and health checks.",
-      "source": {
-        "source": "npm",
-        "package": "@agentuniversity/bios-implant"
-      },
+      "source": "./plugins/bios-implant",
       "category": "Developer Tools"
     }
   ]

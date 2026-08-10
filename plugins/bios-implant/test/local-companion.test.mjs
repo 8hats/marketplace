@@ -1,0 +1,616 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import http from 'node:http';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { once } from 'node:events';
+import { PassThrough } from 'node:stream';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const PROJECT_ROOT = process.env.BIOS_IMPLANT_TEST_PACKAGE_ROOT
+  ? path.resolve(process.env.BIOS_IMPLANT_TEST_PACKAGE_ROOT)
+  : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const COMPANION_SOURCE = path.join(PROJECT_ROOT, 'src', 'local-companion.mjs');
+const COMPANION_ENTRYPOINT = path.join('dist', 'local-mcp.mjs');
+
+async function loadCompanionModule() {
+  const nonce = `?v=${Date.now()}-${Math.random()}`;
+  return import(pathToFileURL(COMPANION_SOURCE).href + nonce);
+}
+
+async function makeSandbox(t, prefix) {
+  const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
+  t.after(async () => {
+    await fs.rm(sandbox, { recursive: true, force: true });
+  });
+  return sandbox;
+}
+
+function setStateRoot(t, stateRoot) {
+  const previous = process.env.BIOS_IMPLANT_STATE_ROOT;
+  process.env.BIOS_IMPLANT_STATE_ROOT = stateRoot;
+  t.after(() => {
+    if (previous === undefined) {
+      delete process.env.BIOS_IMPLANT_STATE_ROOT;
+    } else {
+      process.env.BIOS_IMPLANT_STATE_ROOT = previous;
+    }
+  });
+}
+
+function biosBody(version) {
+  return `---\nversion: ${version}\n---\n# demo\nBIOS v${version}\n`;
+}
+
+async function runEntrypoint(entrypoint, requests, { env = {} } = {}) {
+  const child = spawn(process.execPath, [entrypoint], {
+    env: { ...process.env, ...env },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  const stdout = [];
+  const stderr = [];
+  child.stdout.on('data', (chunk) => stdout.push(chunk.toString('utf8')));
+  child.stderr.on('data', (chunk) => stderr.push(chunk.toString('utf8')));
+  child.stdin.end(`${requests.map((request) => JSON.stringify(request)).join('\n')}\n`);
+
+  const [exitCode] = await once(child, 'close');
+  return {
+    exitCode,
+    stderr: stderr.join(''),
+    responses: stdout.join('').trim().split('\n').filter(Boolean).map((line) => JSON.parse(line)),
+  };
+}
+
+test('packaged local MCP entrypoint serves JSON-RPC when launched through a symlink', { concurrency: false }, async (t) => {
+  const sandbox = await makeSandbox(t, 'implant-local-entrypoint-');
+  const stagedPlugin = path.join(sandbox, 'staged-plugin');
+  try {
+    await fs.symlink(PROJECT_ROOT, stagedPlugin, 'dir');
+  } catch (error) {
+    if (error?.code === 'EPERM' || error?.code === 'EACCES') {
+      t.skip('directory symlink creation is unavailable in this environment');
+      return;
+    }
+    throw error;
+  }
+
+  const result = await runEntrypoint(path.join(stagedPlugin, COMPANION_ENTRYPOINT), [
+    { jsonrpc: '2.0', id: 1, method: 'initialize', params: {} },
+    { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} },
+  ]);
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.stderr, '');
+  assert.equal(result.responses[0].result.serverInfo.name, 'implant-local');
+  assert.deepEqual(
+    result.responses[1].result.tools.map((tool) => tool.name),
+    ['local_activate', 'local_connect', 'local_selection', 'local_stage', 'local_status', 'local_doctor'],
+  );
+  const tools = Object.fromEntries(result.responses[1].result.tools.map((tool) => [tool.name, tool]));
+  assert.deepEqual(tools.local_doctor.annotations, {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  });
+  assert.deepEqual(tools.local_selection.annotations, tools.local_doctor.annotations);
+  assert.deepEqual(tools.local_activate.annotations, {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: true,
+  });
+});
+
+test('packaged local MCP performs activation over real host networking without exposing the capability', { concurrency: false }, async (t) => {
+  const sandbox = await makeSandbox(t, 'implant-local-activation-');
+  const stagedPlugin = path.join(sandbox, 'staged-plugin');
+  await fs.symlink(PROJECT_ROOT, stagedPlugin, 'dir');
+
+  const capability = 'test-capability-that-must-never-appear-in-tool-output';
+  const agentId = 'agent-real-network';
+  let setupReads = 0;
+  let activationWrites = 0;
+  let receivedCapability = null;
+
+  const server = http.createServer((request, response) => {
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    if (request.method === 'GET' && request.url === `/setup/${capability}/SETUP.md`) {
+      setupReads += 1;
+      response.writeHead(200, { 'content-type': 'text/markdown; charset=utf-8' });
+      response.end(`# Agent setup\n\n\`\`\`text\nagent_id: ${agentId}\n\`\`\`\n\n\`\`\`bash\ncurl -X POST '${origin}/api/registry/activate' \\\n+  -H 'X-Enrollment-Capability: ${capability}'\n\`\`\`\n`);
+      return;
+    }
+    if (request.method === 'POST' && request.url === '/api/registry/activate') {
+      activationWrites += 1;
+      receivedCapability = request.headers['x-enrollment-capability'];
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ agent_id: agentId, bound: true }));
+      return;
+    }
+    response.writeHead(404).end();
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const result = await runEntrypoint(path.join(stagedPlugin, COMPANION_ENTRYPOINT), [
+    { jsonrpc: '2.0', id: 1, method: 'initialize', params: {} },
+    {
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: {
+        name: 'local_activate',
+        arguments: { setup_url: `${origin}/setup/${capability}/SETUP.md` },
+      },
+    },
+  ], {
+    env: {
+      BIOS_IMPLANT_SETUP_ORIGIN: origin,
+      BIOS_IMPLANT_REGISTRY_ORIGIN: origin,
+      BIOS_IMPLANT_ALLOW_INSECURE_LOCAL_TEST: '1',
+    },
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.stderr, '');
+  assert.equal(setupReads, 1);
+  assert.equal(activationWrites, 1);
+  assert.equal(receivedCapability, capability);
+  assert.equal(result.responses[1].result.isError, false);
+  assert.equal(result.responses[1].result.structuredContent.agent_id, agentId);
+  assert.equal(result.responses[1].result.structuredContent.bound, true);
+  assert.doesNotMatch(JSON.stringify(result), new RegExp(capability));
+});
+
+test('handleRequest advertises initialize and exactly six tools', { concurrency: false }, async () => {
+  const companion = await loadCompanionModule();
+  const session = companion.createSession({
+    listRoots: async () => [],
+    output: new PassThrough(),
+    error: new PassThrough(),
+  });
+
+  const initialize = await companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'initialize',
+    params: {},
+  });
+  const tools = await companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 2,
+    method: 'tools/list',
+    params: {},
+  });
+
+  assert.equal(initialize.result.protocolVersion, '2024-11-05');
+  assert.equal(initialize.result.serverInfo.name, 'implant-local');
+  assert.deepEqual(
+    tools.result.tools.map((tool) => tool.name),
+    ['local_activate', 'local_connect', 'local_selection', 'local_stage', 'local_status', 'local_doctor'],
+  );
+});
+
+test('handleRequest stays silent on client notifications', { concurrency: false }, async () => {
+  const companion = await loadCompanionModule();
+  const session = companion.createSession({
+    listRoots: async () => [],
+    output: new PassThrough(),
+    error: new PassThrough(),
+  });
+
+  assert.equal(
+    await companion.handleRequest(session, { jsonrpc: '2.0', method: 'notifications/initialized' }),
+    null,
+  );
+  assert.equal(
+    await companion.handleRequest(session, { jsonrpc: '2.0', method: 'initialized' }),
+    null,
+  );
+  assert.equal(
+    await companion.handleRequest(session, {
+      jsonrpc: '2.0',
+      method: 'notifications/cancelled',
+      params: { requestId: 9 },
+    }),
+    null,
+  );
+
+  const unknownRequest = await companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 7,
+    method: 'no/such/method',
+  });
+  assert.equal(unknownRequest.error.code, -32601);
+});
+
+test('tools/call flows through connect, selection, stage, and status', { concurrency: false }, async (t) => {
+  const companion = await loadCompanionModule();
+  const sandbox = await makeSandbox(t, 'implant-local-mcp-');
+  const workspace = path.join(sandbox, 'workspace');
+  const alias = path.join(sandbox, 'workspace-link');
+  const stateRoot = path.join(sandbox, 'state');
+  await fs.mkdir(workspace, { recursive: true });
+  try {
+    await fs.symlink(workspace, alias, 'dir');
+  } catch (error) {
+    if (error?.code === 'EPERM' || error?.code === 'EACCES') {
+      t.skip('directory symlink creation is unavailable in this environment');
+      return;
+    }
+    throw error;
+  }
+  setStateRoot(t, stateRoot);
+
+  const session = companion.createSession({
+    listRoots: async () => [sandbox],
+    output: new PassThrough(),
+    error: new PassThrough(),
+  });
+
+  const connect = await companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 3,
+    method: 'tools/call',
+    params: {
+      name: 'local_connect',
+      arguments: {
+        agent_id: 'agent-mcp',
+        folder: alias,
+      },
+    },
+  });
+  const selection = await companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 4,
+    method: 'tools/call',
+    params: {
+      name: 'local_selection',
+      arguments: {
+        folder: workspace,
+      },
+    },
+  });
+  const stage = await companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 5,
+    method: 'tools/call',
+    params: {
+      name: 'local_stage',
+      arguments: {
+        agent_id: 'agent-mcp',
+        label: 'default',
+        folder: workspace,
+        body: biosBody(4),
+        version: 4,
+        etag: '"etag-4"',
+      },
+    },
+  });
+  const status = await companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 6,
+    method: 'tools/call',
+    params: {
+      name: 'local_status',
+      arguments: {
+        folder: workspace,
+      },
+    },
+  });
+
+  assert.equal(connect.result.isError, false);
+  assert.equal(connect.result.structuredContent.agent_id, 'agent-mcp');
+  assert.equal(selection.result.isError, false);
+  assert.equal(selection.result.structuredContent.workspace_root, await fs.realpath(workspace));
+  assert.equal(selection.result.structuredContent.binding_path, connect.result.structuredContent.binding_path);
+  assert.equal(stage.result.isError, false);
+  assert.equal(stage.result.structuredContent.version, 4);
+  assert.equal(
+    stage.result.structuredContent.active_path,
+    path.join(await fs.realpath(stateRoot), 'agents', 'agent-mcp', 'active-bios.md'),
+  );
+  assert.equal(status.result.isError, false);
+  assert.equal(status.result.structuredContent.bios_version, 4);
+  assert.equal(status.result.structuredContent.layout, 'canonical');
+  assert.equal(status.result.structuredContent.bios_body, biosBody(4));
+});
+
+test('domain failures and doctor warnings are surfaced as isError results', { concurrency: false }, async (t) => {
+  const companion = await loadCompanionModule();
+  const sandbox = await makeSandbox(t, 'implant-local-errors-');
+  const workspace = path.join(sandbox, 'workspace');
+  const stateRoot = path.join(sandbox, 'state');
+  await fs.mkdir(workspace, { recursive: true });
+  setStateRoot(t, stateRoot);
+
+  const session = companion.createSession({
+    listRoots: async () => [workspace],
+    output: new PassThrough(),
+    error: new PassThrough(),
+  });
+
+  const doctor = await companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 7,
+    method: 'tools/call',
+    params: {
+      name: 'local_doctor',
+      arguments: {
+        folder: workspace,
+      },
+    },
+  });
+  const mismatch = await companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 8,
+    method: 'tools/call',
+    params: {
+      name: 'local_stage',
+      arguments: {
+        agent_id: 'agent-mismatch',
+        label: 'default',
+        body: biosBody(1),
+        version: 1,
+        etag: '"etag-1"',
+      },
+    },
+  });
+
+  assert.equal(doctor.result.isError, false);
+  assert.deepEqual(doctor.result.structuredContent.warnings, ['BINDING_REQUIRED']);
+  assert.equal(mismatch.result.isError, true);
+  assert.equal(mismatch.result.structuredContent.code, 'BINDING_REQUIRED');
+});
+
+test('local_doctor reports damaged bindings as unhealthy errors without leaking payloads', { concurrency: false }, async (t) => {
+  const companion = await loadCompanionModule();
+  const sandbox = await makeSandbox(t, 'implant-local-doctor-binding-');
+  const workspace = path.join(sandbox, 'workspace');
+  const stateRoot = path.join(sandbox, 'state');
+  await fs.mkdir(workspace, { recursive: true });
+  setStateRoot(t, stateRoot);
+
+  const session = companion.createSession({
+    listRoots: async () => [workspace],
+    output: new PassThrough(),
+    error: new PassThrough(),
+  });
+  const connect = await companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 20,
+    method: 'tools/call',
+    params: {
+      name: 'local_connect',
+      arguments: { agent_id: 'agent-broken-binding' },
+    },
+  });
+  const malformedSecret = 'secret-binding-fragment';
+  await fs.writeFile(
+    connect.result.structuredContent.binding_path,
+    `{broken:${malformedSecret}`,
+    'utf8',
+  );
+
+  const doctor = await companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 21,
+    method: 'tools/call',
+    params: {
+      name: 'local_doctor',
+      arguments: { folder: workspace },
+    },
+  });
+  const selection = await companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 22,
+    method: 'tools/call',
+    params: {
+      name: 'local_selection',
+      arguments: { folder: workspace },
+    },
+  });
+
+  assert.equal(doctor.result.isError, true);
+  assert.equal(doctor.result.structuredContent.healthy, false);
+  assert.deepEqual(doctor.result.structuredContent.errors, ['BINDING_UNREADABLE']);
+  assert.deepEqual(doctor.result.structuredContent.warnings, []);
+  assert.equal(doctor.result.content[0].text.includes('Unhealthy'), true);
+  assert.equal(JSON.stringify(doctor.result).includes(malformedSecret), false);
+  assert.equal(selection.result.isError, true);
+  assert.equal(selection.result.structuredContent.code, 'BINDING_UNREADABLE');
+  assert.equal(JSON.stringify(selection.result).includes(malformedSecret), false);
+});
+
+test('server-initiated roots/list requests time out and resolved requests clear their timers', { concurrency: false }, async (t) => {
+  const companion = await loadCompanionModule();
+  const sandbox = await makeSandbox(t, 'implant-local-roots-timeout-');
+  const workspace = path.join(sandbox, 'workspace');
+  const stateRoot = path.join(sandbox, 'missing-state');
+  await fs.mkdir(workspace, { recursive: true });
+  setStateRoot(t, stateRoot);
+
+  const output = new PassThrough();
+  const outputChunks = [];
+  output.on('data', (chunk) => outputChunks.push(chunk.toString('utf8')));
+  const session = companion.createSession({
+    output,
+    error: new PassThrough(),
+    clientRequestTimeoutMs: 25,
+  });
+
+  const resolvedRequest = session.callClient('roots/list', {});
+  const firstRequest = JSON.parse(outputChunks.join('').trim().split('\n')[0]);
+  assert.equal(session.resolveClientResponse({
+    jsonrpc: '2.0',
+    id: firstRequest.id,
+    result: { roots: [workspace] },
+  }), true);
+  assert.deepEqual(await resolvedRequest, { roots: [workspace] });
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.equal(session.resolveClientResponse({
+    jsonrpc: '2.0',
+    id: firstRequest.id,
+    result: { roots: [] },
+  }), false);
+
+  const timedOut = await companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 23,
+    method: 'tools/call',
+    params: {
+      name: 'local_selection',
+      arguments: { folder: workspace },
+    },
+  });
+
+  assert.equal(timedOut.result.isError, true);
+  assert.equal(timedOut.result.structuredContent.code, 'CLIENT_REQUEST_TIMEOUT');
+  await assert.rejects(fs.access(stateRoot), (error) => error?.code === 'ENOENT');
+});
+
+test('local_doctor keeps staged BIOS bodies out of text and structured content', { concurrency: false }, async (t) => {
+  const companion = await loadCompanionModule();
+  const sandbox = await makeSandbox(t, 'implant-local-doctor-');
+  const workspace = path.join(sandbox, 'workspace');
+  const stateRoot = path.join(sandbox, 'state');
+  const secretBody = 'secret fallback body';
+  await fs.mkdir(workspace, { recursive: true });
+  setStateRoot(t, stateRoot);
+
+  const session = companion.createSession({
+    listRoots: async () => [workspace],
+    output: new PassThrough(),
+    error: new PassThrough(),
+  });
+
+  await companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 9,
+    method: 'tools/call',
+    params: {
+      name: 'local_connect',
+      arguments: { agent_id: 'agent-doctor' },
+    },
+  });
+  await companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 10,
+    method: 'tools/call',
+    params: {
+      name: 'local_stage',
+      arguments: {
+        agent_id: 'agent-doctor',
+        label: 'default',
+        body: secretBody,
+        version: 2,
+        etag: '"etag-doctor"',
+      },
+    },
+  });
+
+  const doctor = await companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 11,
+    method: 'tools/call',
+    params: {
+      name: 'local_doctor',
+      arguments: {
+        folder: workspace,
+      },
+    },
+  });
+
+  assert.equal(doctor.result.isError, false);
+  assert.equal(doctor.result.content[0].text.includes(secretBody), false);
+  assert.equal(JSON.stringify(doctor.result.structuredContent).includes(secretBody), false);
+});
+
+test('local_stage accepts folder when multiple workspace roots are granted', { concurrency: false }, async (t) => {
+  const companion = await loadCompanionModule();
+  const sandbox = await makeSandbox(t, 'implant-local-multiroot-');
+  const workspaceOne = path.join(sandbox, 'workspace-one');
+  const workspaceTwo = path.join(sandbox, 'workspace-two');
+  const stateRoot = path.join(sandbox, 'state');
+  await fs.mkdir(workspaceOne, { recursive: true });
+  await fs.mkdir(workspaceTwo, { recursive: true });
+  setStateRoot(t, stateRoot);
+
+  const session = companion.createSession({
+    listRoots: async () => [workspaceOne, workspaceTwo],
+    output: new PassThrough(),
+    error: new PassThrough(),
+  });
+
+  await companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 12,
+    method: 'tools/call',
+    params: {
+      name: 'local_connect',
+      arguments: {
+        agent_id: 'agent-multi',
+        folder: workspaceTwo,
+      },
+    },
+  });
+
+  const stage = await companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 13,
+    method: 'tools/call',
+    params: {
+      name: 'local_stage',
+      arguments: {
+        agent_id: 'agent-multi',
+        label: 'default',
+        folder: workspaceTwo,
+        body: biosBody(6),
+        version: 6,
+        etag: '"etag-multi"',
+      },
+    },
+  });
+
+  assert.equal(stage.result.isError, false);
+  assert.equal(stage.result.structuredContent.workspace_root, await fs.realpath(workspaceTwo));
+  assert.equal(stage.result.structuredContent.version, 6);
+});
+
+test('runStdio emits newline-delimited json-rpc responses', { concurrency: false }, async (t) => {
+  const companion = await loadCompanionModule();
+  const sandbox = await makeSandbox(t, 'implant-local-stdio-');
+  const workspace = path.join(sandbox, 'workspace');
+  await fs.mkdir(workspace, { recursive: true });
+
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const error = new PassThrough();
+  const chunks = [];
+  output.on('data', (chunk) => chunks.push(chunk.toString('utf8')));
+
+  const runPromise = companion.runStdio({
+    input,
+    output,
+    error,
+    listRoots: async () => [workspace],
+  });
+
+  input.write(`${JSON.stringify({ jsonrpc: '2.0', id: 11, method: 'ping', params: {} })}\n`);
+  input.write(`${JSON.stringify({ jsonrpc: '2.0', id: 12, method: 'tools/list', params: {} })}\n`);
+  input.end();
+
+  const exitCode = await runPromise;
+  const lines = chunks.join('').trim().split('\n').filter(Boolean).map((line) => JSON.parse(line));
+
+  assert.equal(exitCode, 0);
+  assert.equal(lines[0].id, 11);
+  assert.deepEqual(lines[0].result, {});
+  assert.equal(lines[1].id, 12);
+  assert.equal(lines[1].result.tools.length, 6);
+});
