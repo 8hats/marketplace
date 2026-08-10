@@ -3,14 +3,11 @@
 Public plugin marketplace for 8Hats / Agent University — agent identity and
 continuity tooling.
 
-The flagship plugin is **bios-implant**, and it **lives in this repository**
-(`plugins/bios-implant`) — manifest, skills, hooks, the local companion MCP
-(`src/` + `dist/`), and its full test suite. Installing from this marketplace
-serves exactly what this repo carries; releasing a change is a version bump
-plus a push, with no npm publish in the loop. The npm package
-[`@agentuniversity/bios-implant`](https://www.npmjs.com/package/@agentuniversity/bios-implant)
-remains as the frozen channel behind the npx installer (Cowork/Codex), at
-1.0.14.
+The plugin it carries is **bios-implant**, and it lives in this repository
+under [`plugins/bios-implant`](plugins/bios-implant): manifest, skills, hooks,
+the local companion MCP (`src/` + `dist/`), and its test suite. Installing from
+this marketplace serves exactly what this repo holds, and a release is a
+version bump plus a push — nothing is fetched from a package registry.
 
 ## What bios-implant is
 
@@ -25,13 +22,15 @@ An agent gets its identity from a BIOS document its owner publishes.
   setup-link activation from the native host, stages a last-good BIOS copy so a
   service outage degrades quietly instead of silently, and answers health
   checks.
-- **Skills** `install`, `connect`, `boot`, `doctor`, plus a `SessionStart`
+- **Skills** `boot`, `connect`, `doctor`, `install`, plus a `SessionStart`
   hook (Claude Code) that injects the session boot protocol.
 
 Requires an Agent University account and an owner-provisioned agent: binding a
 workspace consumes a **one-use setup URL** handed to you by the owner. There is
 no self-service registration — the plugin is public, the service behind it is
 not open to the public.
+
+Node ≥ 20 must be on `PATH`; the local companion runs under it.
 
 ## Install — Claude Code
 
@@ -52,7 +51,7 @@ Restart Claude Code (or `/reload-plugins`). Then, inside a session:
    manually to refresh mid-session.
 
 Updating is two commands, and both are needed — the first refreshes the index,
-the second moves you to the latest npm release:
+the second moves you onto the version this repository now carries:
 
 ```text
 /plugin marketplace update 8hats
@@ -62,87 +61,78 @@ the second moves you to the latest npm release:
 Non-interactive equivalents: `claude plugin marketplace add 8hats/plugins`,
 `claude plugin install bios-implant@8hats`.
 
-Two caveats:
+Two caveats, both learned by hitting them:
 
-- **Pick one install path per host.** The npx installer (below) registers the
-  same plugin as `bios-implant@agent-university`. If you already installed that
-  way, keep it — do not add a second copy from this marketplace; two copies
-  mean duplicate skills and MCP servers.
-- If this machine already has a marketplace named `8hats` from a different
-  source (the retired pre-2026-05 `agent-planner-production` mapping), the CLI
-  does **not** replace it — it registers this repo under the fallback slug
-  `8hats-plugins` instead, which collides with the 8hats **team** marketplace
-  and hijacks its name (observed on 2.1.220; removing the hijacked entry also
-  uninstalls its plugins). On such machines: migrate anything still installed
-  from the stale `8hats`, `/plugin marketplace remove 8hats`, and only then
-  add this one.
+- **One copy per host.** The npx installer (see [The npm channel](#the-npm-channel-frozen))
+  registers the same plugin separately as `bios-implant@agent-university`.
+  Running both means duplicate skills and duplicate MCP servers. To move an
+  existing npx install onto this marketplace:
 
-## Install — Claude Desktop / Local Cowork
+  ```text
+  claude plugin uninstall bios-implant@agent-university
+  claude plugin install bios-implant@8hats
+  ```
 
-The supported path is the npm installer, run in the real host terminal (not a
-sandbox shell):
-
-```sh
-npx -y @agentuniversity/bios-implant@latest install --yes
-```
-
-It resolves the active Claude Desktop profile, registers the native Local
-Cowork plugin, and verifies the registration by reading the plugin list back.
-Requires Node ≥ 20 and Claude CLI ≥ 2.1.220. Fully quit and reopen Claude
-Desktop, then in a new Local Cowork session run the `doctor` skill → OAuth if
-prompted → `connect` with the one-use setup URL from the exact workspace →
-`boot`.
-
-Agent-driven bootstrap: point the agent at
-<https://app.agents.university/bios-implant/SETUP.md> and let it follow the
-document to completion.
-
-Note: the npx channel installs the last **npm** release — frozen at 1.0.14.
-The live, versioned channel is this marketplace (Claude Code, and the desktop
-app's plugin browser).
-
-## Install — Codex
-
-```sh
-npx -y @agentuniversity/bios-implant@latest install --yes --harness codex
-```
-
-The installer registers the MCPs and pins the exact OAuth callback Codex needs
-in `~/.codex/config.toml` (an existing conflicting value is preserved, never
-overwritten). In a new Codex session, run `codex mcp login implant` if
-authorization is required, then run the `boot` skill — Codex has no hook
-runner, so boot does not fire by itself (expected in v1). The npx channel
-serves the frozen npm 1.0.14.
-
-## Host-side doctor, update, uninstall
-
-```sh
-npx -y @agentuniversity/bios-implant@latest doctor
-npx -y @agentuniversity/bios-implant@latest install --yes     # update / repair
-npx -y @agentuniversity/bios-implant@latest uninstall --yes
-```
-
-These commands manage installs made by the npx installer. A marketplace
-install updates via the two `/plugin` commands above instead, and the host-side
-`doctor` may flag its missing persistent catalog — expected for that path, not
-a fault.
-
-`WARN AUTH_REQUIRED` / `WARN BINDING_REQUIRED` / `WARN RUNTIME_PROBE_REQUIRED`
-mean the local install is correct and an in-app step remains — see the
-package's `INSTALL.md` for the exact remediation per warning.
+- **A taken marketplace name is not replaced — it is worked around.** If this
+  machine already has a marketplace named `8hats` from another source (the
+  retired pre-2026-05 `agent-planner-production` mapping), the CLI registers
+  this repo under the fallback slug `8hats-plugins`, which collides with the
+  8hats **team** marketplace and takes over its name (observed on CLI 2.1.220;
+  removing the hijacked entry then uninstalls that marketplace's plugins).
+  Safe order on such a machine: migrate anything still installed from the stale
+  `8hats`, `/plugin marketplace remove 8hats`, then add this one.
 
 ## Other hosts
 
-As of 2026-08-10 the identity provider publishes a `registration_endpoint`, so
-hosts that implement MCP OAuth with Dynamic Client Registration can obtain a
-client automatically. Claude Code is verified end-to-end; Cowork and Codex are
-installer-managed; everything else (hosted Claude connectors, Cursor, VS Code,
-Gemini CLI, Zed, Windsurf, `mcp-remote`) is a prepared configuration awaiting a
-first verified OAuth round-trip. [`docs/multi-host.md`](docs/multi-host.md)
-carries the exact snippets and the current per-host status.
+`docs/multi-host.md` carries the exact per-host configuration and how far each
+one is actually proven. In short:
+
+- **Claude Code** — the path above; verified end to end.
+- **Claude Desktop** — the desktop app has a plugin browser that takes the same
+  marketplace source (`8hats/plugins`); we have not run a Local Cowork session
+  through it, so the proven path there stays the npx installer below.
+- **Codex** — no marketplace mechanism; use the npx installer below. Codex has
+  no hook runner, so run the `boot` skill yourself at session start.
+- **Anything else that speaks MCP** (hosted Claude connectors, Cursor, VS Code,
+  Gemini CLI, Zed, Windsurf, `mcp-remote`) — the identity provider now
+  publishes a `registration_endpoint`, so Dynamic Client Registration works and
+  these hosts can reach the remote `implant` server. Those configurations are
+  prepared and syntax-checked, not yet proven by a completed OAuth round-trip.
+  They also get the remote half only: no skills, no hooks, no local companion.
 
 For hosts with no hook runner, [`AGENTS.md`](AGENTS.md) carries the session
 boot protocol that Claude Code injects from a hook.
+
+## The npm channel (frozen)
+
+Before this repository became self-contained, the payload shipped as the npm
+package `@agentuniversity/bios-implant`. That package is **frozen at 1.0.14**
+and exists only to keep its one-command installer working for Local Cowork and
+Codex — it does not receive the releases made here.
+
+```sh
+npx -y @agentuniversity/bios-implant@latest install --yes                 # Cowork
+npx -y @agentuniversity/bios-implant@latest install --yes --harness codex # Codex
+npx -y @agentuniversity/bios-implant@latest doctor
+npx -y @agentuniversity/bios-implant@latest uninstall --yes
+```
+
+Run these in the real host terminal, not a sandbox shell. The installer
+resolves the active Claude Desktop profile, registers the native plugin, reads
+the plugin list back to verify, and for Codex pins the exact OAuth callback in
+`~/.codex/config.toml` (an existing conflicting value is preserved, never
+overwritten). It needs Node ≥ 20 and Claude CLI ≥ 2.1.220. Afterwards, fully
+quit and reopen Claude Desktop, then in a new session: `doctor` → OAuth if
+prompted → `connect` with the one-use setup URL from the exact workspace →
+`boot`.
+
+`WARN AUTH_REQUIRED` / `WARN BINDING_REQUIRED` / `WARN RUNTIME_PROBE_REQUIRED`
+from that installer mean the local install is correct and an in-app step
+remains; `plugins/bios-implant/INSTALL.md` gives the remediation for each.
+
+The npx `doctor` inspects installs made by the npx installer. Run against a
+marketplace install it may report a missing persistent catalog — expected for
+that path, not a fault.
 
 ## Repository layout
 
@@ -156,32 +146,36 @@ boot protocol that Claude Code injects from a hook.
 └── AGENTS.md                 ← boot protocol for hook-less hosts
 ```
 
-This repository is self-contained: the marketplace serves the tree above, and
-CI runs the plugin's full `node --test` suite, strict manifest validation, and
-a secret scan on every push. The retired former homes (`8hats/bios-implant`,
-the team monorepo copy) only point here.
+CI runs the plugin's full `node --test` suite, `claude plugin validate
+--strict`, and a secret scan on every push. The former homes — the
+`8hats/bios-implant` source repo and the copy in the private team monorepo —
+are retired and point here.
 
-## Adding or updating a plugin
+## Releasing and contributing
 
-1. **Updating bios-implant** = edit `plugins/bios-implant`, bump `version` in
-   its `.claude-plugin/plugin.json` (that is what `/plugin update` compares),
-   push. CI runs the plugin's test suite, strict validation, and the secret
-   scan before anything lands on `main`.
-2. **A new plugin** needs an entry with `name` (kebab-case — the claude.ai sync
-   rejects anything else) and `source` (an npm package or a relative path with
-   a `.claude-plugin/plugin.json`). CI validates the manifest shape.
-3. Never put `version` in a marketplace entry — the plugin.json inside the
-   package owns it, and a stale marketplace copy silently breaks
+1. **Releasing bios-implant**: edit `plugins/bios-implant`, bump `version` in
+   its `.claude-plugin/plugin.json` — that is the field `/plugin update`
+   compares — and push. Users pick it up with `marketplace update` +
+   `plugin update`.
+2. **Adding a plugin**: create `plugins/<name>/.claude-plugin/plugin.json` and
+   add an entry to `.claude-plugin/marketplace.json` with `name` (kebab-case —
+   the claude.ai sync rejects anything else) and `source` (a relative path).
+3. **Never put `version` in a marketplace entry.** The plugin's own
+   `plugin.json` owns it; a second copy silently desynchronises
    update-detection.
-4. **Removing an entry silently uninstalls the plugin** for everyone who has
-   it, on their next marketplace update. Deprecate in place.
+4. **Removing an entry uninstalls the plugin** for everyone who has it, on
+   their next marketplace update. Deprecate in place instead.
+
+`${CLAUDE_PLUGIN_ROOT}` is substituted into hooks, `.mcp.json`, and
+skill/command bodies at load time. It is not a shell variable — typed into a
+terminal it expands to nothing.
 
 ## Related
 
 The 8hats team marketplace (`8hats/8hats-plugins`) is private and carries the
 internal-only plugins. `bios-implant` used to be duplicated there; it now lives
-here (npm-sourced) only. Team installs migrate with
-`/plugin install bios-implant@8hats` or the npx installer.
+here only, and team machines migrate with the two commands at the top of this
+file.
 
 ## License
 

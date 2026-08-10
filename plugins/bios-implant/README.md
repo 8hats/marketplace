@@ -1,5 +1,12 @@
 # BIOS Implant
 
+> **Where this comes from.** The live home of this plugin is the public
+> marketplace [`8hats/plugins`](https://github.com/8hats/plugins), which
+> carries this tree and installs it directly — see that repository's README for
+> the Claude Code path. The npm package `@agentuniversity/bios-implant` is
+> frozen at 1.0.14 and exists to keep the one-command installer below working
+> for Local Cowork and Codex; it does not receive newer releases.
+
 ## Agent bootstrap for Local Cowork
 
 If you are the Local Cowork agent, fetch and follow the public setup document first:
@@ -48,7 +55,7 @@ When Claude Desktop is present, this default command targets Local Cowork only. 
 
 Start with [INSTALL.md](INSTALL.md) for the manual reference for Claude Desktop, Local Cowork, Claude Code, and Codex.
 
-The intended version 1 distribution model is a public npm package with a proprietary license. Installing it does not require source or repository access.
+This installer path ships as a public npm package with a proprietary license, and needs no source or repository access. The marketplace path in `8hats/plugins` needs none either — the CLI clones the public repo for you.
 
 BIOS Implant installs and reconciles:
 
@@ -123,6 +130,6 @@ No Git checkout, npm login, or global install is required.
 
 For Local Cowork, the command resolves the active Claude Desktop account and organization profile, runs Claude's native plugin marketplace and install commands in Cowork mode, and verifies the installed plugin from that same profile. It never uses a `claude://cowork/new?file=...` link: Anthropic documents that parameter as a file attachment, not a plugin installer. Fully quit and reopen Claude Desktop after a first install or update so the UI starts from the reconciled plugin state.
 
-The private source repository also carries a Cowork-compatible marketplace manifest for authorized organization distribution. Public end users do not need repository access or Git: the supported public path is the npm command above, whose catalog installs the public npm package directly into Local Cowork.
+The public `8hats/plugins` marketplace carries the same plugin for hosts that install from a marketplace. Public end users need neither repository access nor Git for either path: the npm command above builds its own local catalog for Local Cowork, and the marketplace path is handled by the host's plugin commands.
 
 Operational commands show an English progress indicator, a concise status, and one next step. Their full JSON payload is saved privately with `0600` permissions under `~/.agent-university/bios-implant-reports`; the terminal prints a `file://` link. Human terminal output remains sanitized. Use `--json` only for machine-readable stdout. It remains parseable, preserves its existing redaction behavior, and points to the same saved report.

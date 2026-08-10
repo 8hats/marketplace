@@ -81,9 +81,16 @@ Non-interactive equivalent, for provisioning a fleet via `settings.json`:
 ## Claude Desktop / Local Cowork — installer-managed
 
 Use the npm installer from the README; it registers the native desktop plugin
-and verifies it. Do **not** use Settings → Connectors → *Add custom connector*
-for Local Cowork — the native plugin path is the supported one and carries the
-skills and the local companion.
+and verifies it by reading the plugin list back. Note that this channel is
+frozen at npm 1.0.14 — the live channel is this marketplace.
+
+The desktop app also has a plugin browser that accepts a marketplace source
+(`8hats/plugins`), which would serve the current version; nobody has yet driven
+a Local Cowork session that way, so treat it as prepared rather than proven.
+
+Either way, do **not** use Settings → Connectors → *Add custom connector* for
+Local Cowork: that registers the remote server alone, without the skills, the
+hooks, or the local companion.
 
 ## Hosted Claude connectors (claude.ai / desktop connectors) — prepared
 
