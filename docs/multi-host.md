@@ -93,10 +93,16 @@ URL:
 https://implant.agents.university/mcp
 ```
 
-With DCR live, the hosted callback registers its own client automatically.
-This gives the remote half only: no skills, no hooks, no local companion, no
-staged fallback. Verify a full OAuth round-trip before handing this to a user
-as a working step.
+How the connector obtains an OAuth client decides the outcome. Anthropic's
+current docs describe custom connectors as using a **pre-registered client
+id** rather than DCR; on this IdP that means a dedicated client carrying the
+hosted callback (`https://claude.ai/api/mcp/auth_callback`) must be registered
+first — the static `bios-implant` client rejects that callback (`400`,
+probed). If the surface performs DCR after all, it can self-register today.
+Either way this gives the remote half only: no skills, no hooks, no local
+companion, no staged fallback. Verify a full OAuth round-trip before handing
+this to a user as a working step. (Claude Code sessions on claude.ai/code do
+not load plugins at all — use the terminal or desktop app.)
 
 ## OpenAI Codex — installer-managed
 
