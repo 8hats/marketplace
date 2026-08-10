@@ -802,11 +802,15 @@ test("doctor keeps missing-harness exit 3 stable across auto and explicit detect
 });
 
 test("doctor without --harness checks every detected supported harness", async () => {
+  const { packageRoot, homeDirectory, stateRoot } = await createDoctorFixture();
   const { stdout, writer } = createOutputBuffers();
   const calledHarnesses = [];
 
   const exitCode = await runCli(["doctor", "--json"], {
     ...writer,
+    packageRoot,
+    homeDirectory,
+    env: { HOME: homeDirectory, BIOS_IMPLANT_STATE_ROOT: stateRoot },
     detectHarnessesImpl: async () => ({
       detections: [
         { harness: "claude", detected: true, supported: true, executable: "/usr/local/bin/claude", version: "2.0.0" },
@@ -847,11 +851,15 @@ test("doctor without --harness checks every detected supported harness", async (
 });
 
 test("doctor without --harness also checks supported Local Cowork synthesized in byHarness", async () => {
+  const { packageRoot, homeDirectory, stateRoot } = await createDoctorFixture();
   const { stdout, writer } = createOutputBuffers();
   const calledHarnesses = [];
 
   const exitCode = await runCli(["doctor", "--json"], {
     ...writer,
+    packageRoot,
+    homeDirectory,
+    env: { HOME: homeDirectory, BIOS_IMPLANT_STATE_ROOT: stateRoot },
     detectHarnessesImpl: async () => ({
       detections: [
         { harness: "claude", detected: true, supported: true, executable: "/usr/local/bin/claude", version: "2.0.0" },
@@ -1273,10 +1281,14 @@ test("human doctor repairs missing registration before session guidance", async 
 });
 
 test("doctor returns warn exit 3 when only unsupported detected harnesses are present", async () => {
+  const { packageRoot, homeDirectory, stateRoot } = await createDoctorFixture();
   const { stdout, writer } = createOutputBuffers();
 
   const exitCode = await runCli(["doctor", "--json"], {
     ...writer,
+    packageRoot,
+    homeDirectory,
+    env: { HOME: homeDirectory, BIOS_IMPLANT_STATE_ROOT: stateRoot },
     detectHarnessesImpl: async () => ({
       detections: [
         {
