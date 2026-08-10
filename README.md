@@ -66,10 +66,14 @@ Two caveats:
   same plugin as `bios-implant@agent-university`. If you already installed that
   way, keep it — do not add a second copy from this marketplace; two copies
   mean duplicate skills and MCP servers.
-- A marketplace name is unique per user, and adding one **silently replaces**
-  the previous mapping. If this machine still had the retired pre-2026-05
-  `8hats` marketplace (`agent-planner-production`), adding this one replaces
-  it — that is intended.
+- If this machine already has a marketplace named `8hats` from a different
+  source (the retired pre-2026-05 `agent-planner-production` mapping), the CLI
+  does **not** replace it — it registers this repo under the fallback slug
+  `8hats-plugins` instead, which collides with the 8hats **team** marketplace
+  and hijacks its name (observed on 2.1.220; removing the hijacked entry also
+  uninstalls its plugins). On such machines: migrate anything still installed
+  from the stale `8hats`, `/plugin marketplace remove 8hats`, and only then
+  add this one.
 
 ## Install — Claude Desktop / Local Cowork
 
