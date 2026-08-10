@@ -101,6 +101,25 @@ test("doctor skill requires runtime evidence and a human-readable health table",
   assert.match(skill, /⏭️ NOT CHECKED/);
 });
 
+test("boot skill ties the status to the agent's knowledge, and bans credential archaeology", async () => {
+  const skill = await readPackageFile("skills", "boot", "SKILL.md");
+
+  // A config-K agent carries its knowledge inside the BIOS body and never needs wm_load. The old
+  // rule downgraded any wm_load failure to PARTIAL unconditionally, so such an agent reported
+  // itself degraded while holding a complete firmware — telling the user it could not answer about
+  // the organization when it could.
+  assert.match(skill, /whether the agent HAS the knowledge its BIOS names, not by whether this tool answered/);
+  assert.match(skill, /A BIOS that carries its own knowledge does not need `wm_load`/);
+  assert.match(skill, /`wm_load` is not required for such an agent/);
+
+  // On 2026-08-10 an opaque `unauthorized` from wm_load sent a booted agent reading the macOS
+  // keychain for Claude Code's OAuth credentials. The harness classifier stopped it; the skill
+  // said nothing either way, which is the gap this pins.
+  assert.match(skill, /Never inspect credential storage/);
+  assert.match(skill, /no keychain reads/);
+  assert.doesNotMatch(skill, /If `wm_load` fails, keep the BIOS result and report a partial boot\./);
+});
+
 test("connect skill routes one-use activation through the native local companion", async () => {
   const skill = await readPackageFile("skills", "connect", "SKILL.md");
 

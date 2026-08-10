@@ -2,6 +2,12 @@
 
 All notable changes to BIOS Implant are documented in this file.
 
+## 1.0.18 - 2026-08-11
+
+- Boot status now follows whether the agent HAS the knowledge its BIOS names, not whether `wm_load` answered: a BIOS that carries its own knowledge reaches `LOADED` without the worldmodel service, instead of reporting itself degraded while holding a complete firmware
+- Forbid credential archaeology during boot — no keychain reads, no token or OAuth config files; report the refusal and the recovery action instead. An opaque `unauthorized` had sent a booted agent reading the OS keychain for the host's OAuth credentials
+- Pin both rules in the bootstrap contract tests
+
 ## 1.0.17 - 2026-08-10
 
 - Report one version everywhere: the plugin manifest, the package manifest, and the runtime constant were 1.0.16 / 1.0.15 / 1.0.15, so the companion announced itself over MCP as `implant-local 1.0.15` while the host showed 1.0.16
