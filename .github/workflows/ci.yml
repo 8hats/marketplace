@@ -138,8 +138,29 @@ jobs:
         run: |
           if [ -d plugins ]; then python3 -m compileall -q plugins; else echo "no vendored plugins"; fi
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: npm-sourced plugins resolve on the registry
+        run: |
+          python3 - <<'PY'
+          import json, subprocess, sys
+          market = json.loads(open(".claude-plugin/marketplace.json").read())
+          rc = 0
+          for entry in market.get("plugins", []):
+              source = entry.get("source")
+              if isinstance(source, dict) and source.get("source") == "npm":
+                  pkg = source["package"]
+                  result = subprocess.run(["npm", "view", pkg, "version"], capture_output=True, text=True)
+                  print(f"{pkg} -> {result.stdout.strip() or result.stderr.strip()}")
+                  rc |= result.returncode
+          sys.exit(rc)
+          PY
+
       - name: Official manifest validation
         run: |
+          # Deliberately unpinned: validate against the CLI users actually run.
           npm install -g @anthropic-ai/claude-code
           export CLAUDE_CONFIG_DIR="$RUNNER_TEMP/claude-config"
           mkdir -p "$CLAUDE_CONFIG_DIR"

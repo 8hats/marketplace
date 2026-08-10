@@ -1,7 +1,8 @@
 # AGENTS.md — 8hats implant boot protocol
 
-This file exists for hosts that have no hook runner. Codex, Cursor, Zed and
-Gemini CLI read `AGENTS.md`; Claude Code does not need it, because the
+This file exists for hosts that have no hook runner. Codex, Cursor and Zed
+read `AGENTS.md` (Gemini CLI can too, with `contextFileName` set); Claude Code
+does not need it, because the
 `bios-implant` plugin injects the same protocol from a `SessionStart` hook and
 resolves the agent id from the local store first.
 
@@ -77,7 +78,7 @@ BIOS was loaded.
 
 Activation (binding an `agent_id` to an exact folder) is a separate, one-time
 flow driven by a one-use setup URL the owner hands you. It requires the local
-companion: give the URL only to the `connect` skill (or the `local_activate`
-tool) from the exact folder you want bound. On a host without the companion
+companion: give the URL only to the `connect` skill from the exact folder you
+want bound. On a host without the companion
 there is no supported activation — bind from a supported host first; the
 binding lives on that machine.

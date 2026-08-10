@@ -65,7 +65,7 @@ Two caveats:
 - **Pick one install path per host.** The npx installer (below) registers the
   same plugin as `bios-implant@agent-university`. If you already installed that
   way, keep it — do not add a second copy from this marketplace; two copies
-  mean duplicate skills and MCP servers, and host doctor flags the stale one.
+  mean duplicate skills and MCP servers.
 - A marketplace name is unique per user, and adding one **silently replaces**
   the previous mapping. If this machine still had the retired pre-2026-05
   `8hats` marketplace (`agent-planner-production`), adding this one replaces
@@ -110,6 +110,11 @@ npx -y @agentuniversity/bios-implant@latest doctor
 npx -y @agentuniversity/bios-implant@latest install --yes     # update / repair
 npx -y @agentuniversity/bios-implant@latest uninstall --yes
 ```
+
+These commands manage installs made by the npx installer. A marketplace
+install updates via the two `/plugin` commands above instead, and the host-side
+`doctor` may flag its missing persistent catalog — expected for that path, not
+a fault.
 
 `WARN AUTH_REQUIRED` / `WARN BINDING_REQUIRED` / `WARN RUNTIME_PROBE_REQUIRED`
 mean the local install is correct and an in-app step remains — see the
