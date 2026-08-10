@@ -4,7 +4,7 @@ Every plugin in this marketplace is built the same way: the capability is a
 **remote MCP server**, and the plugin is a thin wrapper that registers it, adds
 skills, and wires host-specific hooks. Since 1.0.x there is a second portable
 half: the **local companion** (`implant-local`), an on-demand Node stdio MCP
-shipped inside the npm package — it owns folder binding, one-use activation,
+shipped inside the plugin — it owns folder binding, one-use activation,
 and last-good BIOS staging, and it runs anywhere Node ≥ 20 runs.
 
 So the question for any other host is never "does it support Claude Code
@@ -46,14 +46,14 @@ Current standing:
 
 - **Verified end-to-end**: Claude Code — marketplace install, server-managed
   OAuth, boot protocol, local staging.
-- **Installer-managed**: Claude Desktop / Local Cowork (native plugin
-  registration, verified by plugin-list readback) and Codex (registration +
-  pinned callback). Run
-  `npx -y @agentuniversity/bios-implant@latest install --yes` — see the
-  [README](../README.md). The npx channel serves the last npm release (1.0.14,
-  frozen); this marketplace is the live channel.
-- **Prepared, awaiting first verified round-trip**: hosted Claude connectors,
-  Cursor, VS Code, Gemini CLI, Zed, Windsurf, `mcp-remote`.
+- **Prepared, awaiting first verified round-trip**: Claude Desktop / Local
+  Cowork through the desktop plugin browser, Codex through manual MCP
+  configuration, hosted Claude connectors, Cursor, VS Code, Gemini CLI, Zed,
+  Windsurf, `mcp-remote`.
+- **Historical**: machines set up by the retired npx installer
+  (`bios-implant@agent-university`, frozen at the last npm release) keep
+  working but receive no updates — migrate them per the
+  [README](../README.md).
 
 ---
 
@@ -78,18 +78,16 @@ Non-interactive equivalent, for provisioning a fleet via `settings.json`:
 }
 ```
 
-## Claude Desktop / Local Cowork — installer-managed
+## Claude Desktop / Local Cowork — prepared
 
-Use the npm installer from the README; it registers the native desktop plugin
-and verifies it by reading the plugin list back. Note that this channel is
-frozen at npm 1.0.14 — the live channel is this marketplace.
+The desktop app has a plugin browser that accepts a marketplace source; point
+it at `8hats/plugins` and install bios-implant from there — it serves the
+version this repository carries. Nobody has yet driven a Local Cowork session
+end to end that way, so treat the path as prepared rather than proven. Fully
+quit and reopen Claude Desktop after a first install or update.
 
-The desktop app also has a plugin browser that accepts a marketplace source
-(`8hats/plugins`), which would serve the current version; nobody has yet driven
-a Local Cowork session that way, so treat it as prepared rather than proven.
-
-Either way, do **not** use Settings → Connectors → *Add custom connector* for
-Local Cowork: that registers the remote server alone, without the skills, the
+Do **not** use Settings → Connectors → *Add custom connector* for Local
+Cowork: that registers the remote server alone, without the skills, the
 hooks, or the local companion.
 
 ## Hosted Claude connectors (claude.ai / desktop connectors) — prepared
@@ -112,18 +110,21 @@ companion, no staged fallback. Verify a full OAuth round-trip before handing
 this to a user as a working step. (Claude Code sessions on claude.ai/code do
 not load plugins at all — use the terminal or desktop app.)
 
-## OpenAI Codex — installer-managed
+## OpenAI Codex — prepared
 
-```sh
-npx -y @agentuniversity/bios-implant@latest install --yes --harness codex
-```
-
-The installer registers `implant` and `implant-local` for Codex and pins the
-callback pair in `~/.codex/config.toml`. In a new session:
+Codex has no marketplace mechanism. Register the remote server in Codex's own
+MCP configuration (`~/.codex/config.toml`) pointing at
+`https://implant.agents.university/mcp`; Codex's generic MCP OAuth flow can
+self-register against the IdP now that Dynamic Client Registration is live.
+Then, in a new session:
 
 ```console
 $ codex mcp login implant
 ```
+
+This gives the remote half; add the local companion with the clone recipe
+below when binding or staging is needed on this host. No Codex OAuth
+round-trip has been verified end to end through this generic path yet.
 
 Codex reads `AGENTS.md`, not hooks — see the
 [repository `AGENTS.md`](../AGENTS.md) for the boot protocol in a form Codex
@@ -222,10 +223,12 @@ re-authentication.
 
 The remote configs above give `bios_load` / `wm_load` only. Folder binding,
 one-use activation, and last-good staging need the local companion. It is not
-Claude-specific — any host that can spawn a stdio MCP can run it:
+Claude-specific — any host that can spawn a stdio MCP can run it. The
+companion ships inside this repository; clone it and point the host at the
+built entrypoint:
 
 ```sh
-npm install -g @agentuniversity/bios-implant
+git clone https://github.com/8hats/plugins
 ```
 
 ```json
@@ -233,14 +236,14 @@ npm install -g @agentuniversity/bios-implant
   "mcpServers": {
     "implant-local": {
       "command": "node",
-      "args": ["<global npm root>/@agentuniversity/bios-implant/dist/local-mcp.mjs"]
+      "args": ["<clone path>/plugins/bios-implant/dist/local-mcp.mjs"]
     }
   }
 }
 ```
 
-(`npm root -g` prints the global root. The companion is on-demand stdio; it
-never runs as a daemon. State lives under `~/.agent-university`.)
+(The companion is on-demand stdio; it never runs as a daemon. State lives
+under `~/.agent-university`.)
 
 ---
 

@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "8hats",
-  "description": "8Hats public plugin marketplace — agent identity and continuity tooling. Each capability is a remote MCP server plus an npm-packaged local companion, so hosts that are not Claude Code can consume the same thing through the npm installer or by pointing at the endpoint directly.",
+  "description": "8Hats public plugin marketplace — agent identity and continuity tooling. Each capability is a remote MCP server plus a local companion vendored in this repository, so hosts that are not Claude Code can consume the same thing by pointing at the endpoint directly.",
   "owner": {
     "name": "8Hats",
     "email": "tp@8hats.ai"

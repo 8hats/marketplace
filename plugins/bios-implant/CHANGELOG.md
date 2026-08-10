@@ -2,6 +2,12 @@
 
 All notable changes to BIOS Implant are documented in this file.
 
+## 1.0.16 - 2026-08-10
+
+- Retire the npm channel from every install surface: README, INSTALL.md, SETUP.md, and the install skill teach only the 8hats/plugins marketplace
+- Point repair and update guidance at the host's own plugin machinery instead of the retired npx installer
+- Pin the marketplace-only contract in the bootstrap tests, with a guard against any runnable npx command returning
+
 ## 1.0.15 - 2026-08-10
 
 - Move one-use setup activation from the Cowork Linux sandbox to the native Local Companion

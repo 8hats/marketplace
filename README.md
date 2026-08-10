@@ -63,10 +63,10 @@ Non-interactive equivalents: `claude plugin marketplace add 8hats/plugins`,
 
 Two caveats, both learned by hitting them:
 
-- **One copy per host.** The npx installer (see [The npm channel](#the-npm-channel-frozen))
-  registers the same plugin separately as `bios-implant@agent-university`.
-  Running both means duplicate skills and duplicate MCP servers. To move an
-  existing npx install onto this marketplace:
+- **One copy per host.** The retired npx installer registered the same plugin
+  separately as `bios-implant@agent-university`. Running both means duplicate
+  skills and duplicate MCP servers. To move an existing npx-era install onto
+  this marketplace:
 
   ```text
   claude plugin uninstall bios-implant@agent-university
@@ -89,10 +89,11 @@ one is actually proven. In short:
 
 - **Claude Code** — the path above; verified end to end.
 - **Claude Desktop** — the desktop app has a plugin browser that takes the same
-  marketplace source (`8hats/plugins`); we have not run a Local Cowork session
-  through it, so the proven path there stays the npx installer below.
-- **Codex** — no marketplace mechanism; use the npx installer below. Codex has
-  no hook runner, so run the `boot` skill yourself at session start.
+  marketplace source (`8hats/plugins`); we have not yet driven a Local Cowork
+  session through it, so treat that path as prepared rather than proven.
+- **Codex** — no marketplace mechanism; configure the remote MCP by hand per
+  `docs/multi-host.md`. Codex has no hook runner, so run the `boot` skill
+  yourself at session start.
 - **Anything else that speaks MCP** (hosted Claude connectors, Cursor, VS Code,
   Gemini CLI, Zed, Windsurf, `mcp-remote`) — the identity provider now
   publishes a `registration_endpoint`, so Dynamic Client Registration works and
@@ -103,36 +104,14 @@ one is actually proven. In short:
 For hosts with no hook runner, [`AGENTS.md`](AGENTS.md) carries the session
 boot protocol that Claude Code injects from a hook.
 
-## The npm channel (frozen)
+## The retired npm channel
 
 Before this repository became self-contained, the payload shipped as the npm
-package `@agentuniversity/bios-implant`. That package is **frozen at 1.0.14**
-and exists only to keep its one-command installer working for Local Cowork and
-Codex — it does not receive the releases made here.
-
-```sh
-npx -y @agentuniversity/bios-implant@latest install --yes                 # Cowork
-npx -y @agentuniversity/bios-implant@latest install --yes --harness codex # Codex
-npx -y @agentuniversity/bios-implant@latest doctor
-npx -y @agentuniversity/bios-implant@latest uninstall --yes
-```
-
-Run these in the real host terminal, not a sandbox shell. The installer
-resolves the active Claude Desktop profile, registers the native plugin, reads
-the plugin list back to verify, and for Codex pins the exact OAuth callback in
-`~/.codex/config.toml` (an existing conflicting value is preserved, never
-overwritten). It needs Node ≥ 20 and Claude CLI ≥ 2.1.220. Afterwards, fully
-quit and reopen Claude Desktop, then in a new session: `doctor` → OAuth if
-prompted → `connect` with the one-use setup URL from the exact workspace →
-`boot`.
-
-`WARN AUTH_REQUIRED` / `WARN BINDING_REQUIRED` / `WARN RUNTIME_PROBE_REQUIRED`
-from that installer mean the local install is correct and an in-app step
-remains; `plugins/bios-implant/INSTALL.md` gives the remediation for each.
-
-The npx `doctor` inspects installs made by the npx installer. Run against a
-marketplace install it may report a missing persistent catalog — expected for
-that path, not a fault.
+package `@agentuniversity/bios-implant` with an npx installer. That channel is
+retired: the package is frozen at 1.0.14, receives no releases, and is no
+longer an offered install path. Machines that still carry an npx-era install
+keep working against that frozen version and never see the releases made
+here — migrate them with the uninstall/install pair above.
 
 ## Repository layout
 

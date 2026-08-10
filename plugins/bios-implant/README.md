@@ -1,11 +1,83 @@
 # BIOS Implant
 
 > **Where this comes from.** The live home of this plugin is the public
-> marketplace [`8hats/plugins`](https://github.com/8hats/plugins), which
-> carries this tree and installs it directly — see that repository's README for
-> the Claude Code path. The npm package `@agentuniversity/bios-implant` is
-> frozen at 1.0.14 and exists to keep the one-command installer below working
-> for Local Cowork and Codex; it does not receive newer releases.
+> marketplace [`8hats/plugins`](https://github.com/8hats/plugins). Installing
+> from that marketplace serves exactly this tree, and a release is a version
+> bump plus a push — no package registry sits in the path.
+
+BIOS Implant gives an agent its identity. It loads the BIOS document the
+agent's owner publishes, keeps the agent's worldmodel current, and owns the
+exact-folder → agent binding on the host.
+
+## What the plugin provides
+
+- The remote **`implant`** MCP registration
+  (`https://implant.agents.university/mcp`), OAuth-backed. Discovery, client
+  registration, scopes, and callbacks are server-managed: the user never
+  enters or edits connector settings.
+- The local **`implant-local`** companion MCP — on-demand Node stdio, never a
+  background daemon. It owns folder binding, one-use setup-link activation,
+  last-good BIOS staging, and health checks. State lives under
+  `AGENT_UNIVERSITY_HOME` or `~/.agent-university`.
+- The portable `install`, `connect`, `boot`, and `doctor` skills.
+- A Claude Code `SessionStart` hook that injects the session boot protocol,
+  plus the plugin-native `SETUP.md` handoff used by Local Cowork.
+
+What it does not include:
+
+- The remote implant service
+- OAuth credentials or an already authenticated remote MCP session
+- Git, Python, or a global package
+- Any background daemon
+
+## Install
+
+**Claude Code** — the verified path:
+
+```text
+/plugin marketplace add 8hats/plugins
+/plugin install bios-implant@8hats
+```
+
+Restart Claude Code (or `/reload-plugins`). Updating is two commands and both
+are required — the first refreshes the index, the second moves you onto the
+version this repository now carries:
+
+```text
+/plugin marketplace update 8hats
+/plugin update bios-implant@8hats
+```
+
+Non-interactive equivalents: `claude plugin marketplace add 8hats/plugins`,
+`claude plugin install bios-implant@8hats`. Uninstall with
+`claude plugin uninstall bios-implant@8hats`.
+
+**Claude Desktop / Local Cowork** — the desktop app's plugin browser takes
+the same marketplace source (`8hats/plugins`). This path is prepared, not yet
+proven end to end. Fully quit and reopen Claude Desktop after a first install
+or update so the UI starts from the reconciled plugin state.
+
+**Codex and other MCP hosts** — no marketplace mechanism exists there.
+Per-host configuration, and how far each host is actually proven, live in
+[`docs/multi-host.md`](../../docs/multi-host.md); hosts without a hook runner
+boot via [`AGENTS.md`](../../AGENTS.md).
+
+Node ≥ 20 must be on `PATH`; the local companion runs under it.
+
+## After installing — in a fresh session
+
+1. Run the `doctor` skill. Complete native OAuth for the `implant` server
+   only if prompted; never enter a client id, callback URL, or scope by hand.
+2. To bind a workspace: open the **exact folder** you want bound, obtain the
+   owner-provided one-use setup URL, and give it only to the `connect`
+   skill — never to a shell command, a log, or normal chat.
+3. `boot` fires from the SessionStart hook in Claude Code; on hook-less hosts
+   run the `boot` skill manually at session start.
+
+`WARN AUTH_REQUIRED`, `WARN BINDING_REQUIRED`, and
+`WARN RUNTIME_PROBE_REQUIRED` from `doctor` mean the install is healthy and
+one in-app step remains; [INSTALL.md](INSTALL.md) gives the remediation for
+each.
 
 ## Agent bootstrap for Local Cowork
 
@@ -13,123 +85,58 @@ If you are the Local Cowork agent, fetch and follow the public setup document fi
 
 https://app.agents.university/bios-implant/SETUP.md
 
-Do not stop after fetching or summarizing it. Perform the installation and keep working until that document tells you to finish.
+Do not stop after fetching or summarizing it. Perform the setup and keep
+working until that document tells you to finish. If you cannot fetch the
+public URL for a transient reason, follow [SETUP.md](SETUP.md) in this tree —
+it is the same document.
 
-If you cannot fetch the public URL for a transient reason, use the same flow below as a manual fallback.
-
-1. Require Local Cowork. Remote Cowork is unsupported.
-2. Request permission once to use Computer Use and change the local Claude configuration when the platform has not already collected it.
-3. Use Computer Use to open the real host Terminal. On macOS, open Terminal.app; do not use a Cowork sandbox, remote shell, or web fetch shell.
-4. Check that Node is version 20 or newer.
-5. Run the installer in the host Terminal and wait for its English status and next step:
-
-   ```sh
-   npx -y @agentuniversity/bios-implant@latest install --yes --harness cowork
-   ```
-
-6. Read the JSON report from the printed `Report:` or `Error report:` file URL yourself. Never ask the user to interpret terminal logs. A successful Cowork result contains `registration_state: "installed_and_verified"`; the installer has already read the native Cowork plugin list back and verified the registration.
-7. Run host doctor in the same Terminal:
-
-   ```sh
-   npx -y @agentuniversity/bios-implant@latest doctor
-   ```
-
-   Plain `doctor` checks every detected supported harness on this host, including Local Cowork when its app state is available. Use `--harness` only when you want to scope doctor to a specific harness.
-
-8. Treat `WARN AUTH_REQUIRED`, `WARN BINDING_REQUIRED`, and `WARN RUNTIME_PROBE_REQUIRED` as a successful local install with an in-app step remaining.
-9. Fully quit and reopen Claude Desktop, then start a new Local Cowork session. There, run the installed `doctor` skill, complete native OAuth only if prompted, ask for the exact workspace and owner-provided one-use setup URL only when binding is still required, then invoke `connect` and `boot`.
-
-The complete durable agent workflow is packaged at [`skills/install/SKILL.md`](skills/install/SKILL.md). It can also be printed before installation with:
-
-```sh
-npx -y @agentuniversity/bios-implant@latest instructions
-```
-
-For a human running the command directly, install Agent University BIOS Implant with:
-
-```sh
-npx -y @agentuniversity/bios-implant@latest install --yes
-```
-
-When Claude Desktop is present, this default command targets Local Cowork only. Use an explicit `--harness` option to add Claude Code or Codex.
-
-Start with [INSTALL.md](INSTALL.md) for the manual reference for Claude Desktop, Local Cowork, Claude Code, and Codex.
-
-This installer path ships as a public npm package with a proprietary license, and needs no source or repository access. The marketplace path in `8hats/plugins` needs none either — the CLI clones the public repo for you.
-
-BIOS Implant installs and reconciles:
-
-- Native Local Cowork plugin registration in the active Claude Desktop account and organization profile
-- Separate native Claude Code and Codex plugin registration for `bios-implant@agent-university`
-- The local `implant-local` Node stdio MCP
-- The remote `implant` MCP registration
-- A fixed, exact Codex MCP OAuth callback policy when Codex is selected
-- The portable `install`, `connect`, `boot`, and `doctor` skills
-- The plugin-native `SETUP.md` handoff used by Local Cowork after installation
-- A Claude session-start hook plus a portable Codex boot fallback
-- A local Agent University catalog snapshot used by native installers
-
-What it does not install:
-
-- The remote implant service
-- OAuth credentials
-- Git, Python, or a global package
-- Any background daemon
-- OAuth credentials or an already authenticated remote MCP session
+The complete durable agent workflow is packaged at
+[`skills/install/SKILL.md`](skills/install/SKILL.md).
 
 ## Local And Remote
 
 BIOS Implant has two parts:
 
-- Local: a packaged plugin payload, local `implant-local` MCP, skills, hooks, and catalog snapshot stored under `AGENT_UNIVERSITY_HOME` or `~/.agent-university`
-- Remote: the `implant` MCP endpoint used for authenticated BIOS and worldmodel access
+- Local: the packaged plugin payload, local `implant-local` MCP, skills,
+  hooks, and catalog snapshot stored under `AGENT_UNIVERSITY_HOME` or
+  `~/.agent-university`
+- Remote: the `implant` MCP endpoint used for authenticated BIOS and
+  worldmodel access
 
-The installer registers the remote connection metadata. In Claude Desktop Local Cowork and Claude Code, the plugin contains only the remote MCP URL: OAuth discovery, client registration, scopes, and callbacks are server-managed, so the user never enters or edits connector settings. When Codex is selected, the installer also pins the official Codex MCP callback settings in `CODEX_HOME/config.toml` or `~/.codex/config.toml` for Codex compatibility. The installer does not acquire credentials. Actual OAuth and remote health verification happen later inside a new Claude or Codex session. An install can finish with an `AUTH_REQUIRED` warning and still be correct.
+The plugin carries only the remote MCP URL: OAuth discovery, client
+registration, scopes, and callbacks are server-managed. Actual OAuth and
+remote health verification happen inside a live session, so an install can
+finish with an `AUTH_REQUIRED` warning and still be correct.
 
 ## Scope
 
-- Default target: host-local Claude Desktop / Local Cowork
-- Also supported: Claude Code and Codex
-- Remote Cowork: not supported in version 1
+- Verified end to end: Claude Code
+- Prepared: Claude Desktop / Local Cowork through the plugin browser, Codex
+  and other MCP-OAuth hosts — see
+  [`docs/multi-host.md`](../../docs/multi-host.md)
+- Remote Cowork: not supported
 - Node runtime: `>=20`
-- Platform scope for version 1: macOS GA, Windows preview, Linux preview for Claude Code and Codex when detected
+- Platform scope: macOS GA; Windows and Linux preview
 
-## Common Commands
+## Privacy And Security
 
-Install or repair:
+- Local catalog and binding data live under `AGENT_UNIVERSITY_HOME` or
+  `~/.agent-university`
+- OAuth remains in the native harness credential store; the plugin never
+  copies credentials, opens a browser on its own, or exports tokens
+- The local `implant-local` MCP runs as on-demand Node stdio, not as a
+  background daemon
 
-```sh
-npx -y @agentuniversity/bios-implant@latest install --yes
+## The retired npm channel
+
+Earlier versions shipped as the npm package `@agentuniversity/bios-implant`
+with an npx installer. That channel is retired: the package is frozen at
+1.0.14, receives no releases, and is no longer an offered install path. A
+machine that still carries an npx-era install runs the same plugin under the
+`bios-implant@agent-university` name — running both means duplicate skills
+and duplicate MCP servers. Move such a machine onto the marketplace:
+
+```text
+claude plugin uninstall bios-implant@agent-university
+claude plugin install bios-implant@8hats
 ```
-
-This is also the only update mechanism promised for version 1. Optional direct
-or global binaries run their installed package version; they do not query the
-registry or re-execute a newer release.
-
-Host-side doctor:
-
-```sh
-npx -y @agentuniversity/bios-implant@latest doctor
-```
-
-Plain `doctor` checks every detected supported harness. Add `--harness cowork`, `--harness claude`, or `--harness codex` to scope doctor to one harness. Install and uninstall keep their existing default targeting semantics.
-
-Uninstall harness registrations:
-
-```sh
-npx -y @agentuniversity/bios-implant@latest uninstall --yes
-```
-
-Uninstall and attempt package-owned data purge:
-
-```sh
-npx -y @agentuniversity/bios-implant@latest uninstall --yes --purge-data
-```
-
-No Git checkout, npm login, or global install is required.
-
-For Local Cowork, the command resolves the active Claude Desktop account and organization profile, runs Claude's native plugin marketplace and install commands in Cowork mode, and verifies the installed plugin from that same profile. It never uses a `claude://cowork/new?file=...` link: Anthropic documents that parameter as a file attachment, not a plugin installer. Fully quit and reopen Claude Desktop after a first install or update so the UI starts from the reconciled plugin state.
-
-The public `8hats/plugins` marketplace carries the same plugin for hosts that install from a marketplace. Public end users need neither repository access nor Git for either path: the npm command above builds its own local catalog for Local Cowork, and the marketplace path is handled by the host's plugin commands.
-
-Operational commands show an English progress indicator, a concise status, and one next step. Their full JSON payload is saved privately with `0600` permissions under `~/.agent-university/bios-implant-reports`; the terminal prints a `file://` link. Human terminal output remains sanitized. Use `--json` only for machine-readable stdout. It remains parseable, preserves its existing redaction behavior, and points to the same saved report.

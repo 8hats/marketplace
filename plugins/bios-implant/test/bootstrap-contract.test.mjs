@@ -10,42 +10,32 @@ async function readPackageFile(...segments) {
   return fsp.readFile(path.join(packageRoot, ...segments), "utf8");
 }
 
-test("npm README exposes an autonomous Local Cowork bootstrap contract", async () => {
+test("README exposes an autonomous Local Cowork bootstrap contract", async () => {
   const readme = await readPackageFile("README.md");
 
   assert.match(readme, /## Agent bootstrap for Local Cowork/);
   assert.match(readme, /https:\/\/app\.agents\.university\/bios-implant\/SETUP\.md/);
   assert.match(readme, /fetch and follow the public setup document first/i);
-  assert.match(readme, /Remote Cowork is unsupported/i);
-  assert.match(readme, /Computer Use/);
-  assert.match(readme, /host Terminal/i);
-  assert.match(
-    readme,
-    /npx -y @agentuniversity\/bios-implant@latest install --yes --harness cowork/
-  );
-  assert.match(readme, /Report:.*file:\/\//is);
+  assert.match(readme, /Remote Cowork: not supported/i);
+  assert.match(readme, /\/plugin marketplace add 8hats\/plugins/);
+  assert.match(readme, /\/plugin install bios-implant@8hats/);
   assert.match(readme, /skills\/install\/SKILL\.md/);
+  assert.doesNotMatch(readme, /npx -y/);
 });
 
-test("install skill owns the full background install, doctor, and handoff workflow", async () => {
+test("install skill owns the marketplace install, doctor, and handoff workflow", async () => {
   const skill = await readPackageFile("skills", "install", "SKILL.md");
   const metadata = await readPackageFile("skills", "install", "agents", "openai.yaml");
 
   assert.match(skill, /^---\nname: install\n/m);
   assert.match(skill, /Local Cowork/);
-  assert.match(skill, /pastes? (?:the )?npm command/i);
-  assert.match(skill, /request.*permission/i);
-  assert.match(skill, /Computer Use/);
-  assert.match(skill, /Terminal\.app/);
-  assert.match(
-    skill,
-    /npx -y @agentuniversity\/bios-implant@latest install --yes --harness cowork/
-  );
-  assert.match(skill, /npx -y @agentuniversity\/bios-implant@latest doctor/);
-  assert.match(skill, /saved JSON report/i);
+  assert.match(skill, /8hats\/plugins/);
+  assert.match(skill, /claude plugin install bios-implant@8hats/);
+  assert.match(skill, /Never install through\s+npm or npx/i);
   assert.match(skill, /AUTH_REQUIRED/);
   assert.match(skill, /BINDING_REQUIRED/);
-  assert.match(skill, /new Local Cowork session/i);
+  assert.match(skill, /fresh session/i);
+  assert.doesNotMatch(skill, /npx -y/);
   assert.match(metadata, /default_prompt: ".*\$install/);
 });
 
@@ -54,17 +44,12 @@ test("Cowork receives the native post-install SETUP.md skill", async () => {
 
   assert.match(setup, /^# BIOS Implant Setup/m);
   assert.match(setup, /Local Cowork/);
-  assert.match(setup, /Computer Use/);
   assert.match(setup, /Node is version 20 or newer/);
-  assert.match(
-    setup,
-    /npx -y @agentuniversity\/bios-implant@latest install --yes --harness cowork/
-  );
-  assert.match(setup, /registration_state: "installed_and_verified"/);
+  assert.match(setup, /8hats\/plugins/);
+  assert.match(setup, /plugin browser/i);
   assert.doesNotMatch(setup, /COWORK_CONFIRMATION_REQUIRED/);
   assert.doesNotMatch(setup, /claude:\/\/cowork\/new/);
-  assert.match(setup, /npx -y @agentuniversity\/bios-implant@latest doctor/);
-  assert.match(setup, /Error report:/);
+  assert.doesNotMatch(setup, /npx -y/);
   assert.match(setup, /doctor/);
   assert.match(setup, /OAuth/);
   assert.match(setup, /connect/);

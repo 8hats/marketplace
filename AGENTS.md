@@ -69,8 +69,8 @@ you how to read the worldmodel result.
 
 ## What you do not get on this host
 
-Hosts running the **local companion** (`implant-local` — bundled by the plugin
-in Claude Code and by the npx installer for Cowork and Codex) stage every
+Hosts running the **local companion** (`implant-local` — bundled by the
+plugin) stage every
 successful `bios_load` to a local store, so a later session can fall back to
 the last-good BIOS when the service is down. A bare remote-MCP host has no
 companion and nothing cached — on `unavailable`, say so rather than implying a
