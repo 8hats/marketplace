@@ -2,6 +2,14 @@
 
 All notable changes to BIOS Implant are documented in this file.
 
+## 1.0.17 - 2026-08-10
+
+- Report one version everywhere: the plugin manifest, the package manifest, and the runtime constant were 1.0.16 / 1.0.15 / 1.0.15, so the companion announced itself over MCP as `implant-local 1.0.15` while the host showed 1.0.16
+- Pin the three version sources against each other in the bootstrap contract tests, so a release that bumps only the plugin manifest fails instead of shipping
+- No behaviour change: `dist/local-mcp.mjs` is a shim over `src/`, so the runtime picks the corrected constant up without a build step
+
+Server-side fixes released the same day, outside this package: the remote MCP now returns the BIOS body in the structured payload instead of only in the text block, which is what made `bios_load` look like it returned an empty body (`8hats/implant-mcp` PR #5, `8hats/bios-server` PR #10).
+
 ## 1.0.16 - 2026-08-10
 
 - Retire the npm channel from every install surface: README, INSTALL.md, SETUP.md, and the install skill teach only the 8hats/plugins marketplace

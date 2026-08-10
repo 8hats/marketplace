@@ -1,6 +1,6 @@
 {
   "name": "@agentuniversity/bios-implant",
-  "version": "1.0.15",
+  "version": "1.0.17",
   "description": "One-command Agent University BIOS Implant installer for Claude Desktop Local Cowork, Claude Code, and Codex; installs MCPs, skills, hooks, and doctor checks.",
   "type": "module",
   "private": false,

@@ -59,6 +59,26 @@ test("Cowork receives the native post-install SETUP.md skill", async () => {
   assert.match(setup, /BLOCKED/);
 });
 
+test("the plugin manifest, the package manifest, and the runtime constant report ONE version", async () => {
+  // "Which version am I running" had two answers through 1.0.16. The host and the marketplace read
+  // .claude-plugin/plugin.json (1.0.16), while everything the agent can actually observe at runtime
+  // comes from PACKAGE_VERSION in constants.mjs (1.0.15) — LOCAL_MCP_SERVER_VERSION feeds
+  // serverInfo.version, so the companion announced itself over MCP as `implant-local 1.0.15`, and
+  // doctor's own manifest-version check compared against that stale constant.
+  //
+  // Asserted across all three sources rather than "package.json matches plugin.json", because the
+  // release commits that caused this (3ab70c4, 1a21c4c) touched plugin.json alone: any pairwise
+  // check leaves a third surface free to drift.
+  const plugin = JSON.parse(await readPackageFile(".claude-plugin", "plugin.json"));
+  const manifest = JSON.parse(await readPackageFile("package.json"));
+  const constants = await readPackageFile("src", "constants.mjs");
+  const runtime = /export const PACKAGE_VERSION = "([^"]+)"/u.exec(constants)?.[1];
+
+  assert.match(plugin.version, /^\d+\.\d+\.\d+$/);
+  assert.equal(manifest.version, plugin.version);
+  assert.equal(runtime, plugin.version);
+});
+
 test("package metadata advertises the Cowork installer rather than a generic package shell", async () => {
   const manifest = JSON.parse(await readPackageFile("package.json"));
 
