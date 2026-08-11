@@ -2,6 +2,19 @@
 
 All notable changes to BIOS Implant are documented in this file.
 
+## 1.0.19 - 2026-08-11
+
+Everything in this release traces to one onboarding (agent `TVP_TEST_2-paired-2026-08`, 2026-08-10) that activated cleanly and never booted.
+
+- Hold agent ids and labels to the alphabet bios-server actually serves — Latin letters, digits, hyphen, 64 chars max. The wider local rule bound ids the server 422s on every `bios_load`, after the one-use link was spent. Tool schemas derive from one shared constant; cross-repo parity tests pin byte-identity with app-v2's creation gate and behavioural identity with bios-server's slug
+- Refuse a setup document naming an unservable agent id as `AGENT_ID_UNSERVABLE` BEFORE the activation request — the link stays unspent and the message names the remedy (recreate the agent), instead of activating into a permanently dead binding
+- `local_activate` now finishes the job: it chains the folder binding for the current workspace root and reports `registry_bound` and `folder_bound` apart. The registry's bare `bound: true` had taught callers to stop with the workspace unbound and nothing left to retry
+- Skills carry `allowed-tools`, so a first-run activation is not denied by the harness permission classifier before the owner ever sees a prompt
+- connect gains the two missing legs: REMOTE-AUTH (native OAuth first; the `script -q /dev/null claude mcp login …` recovery for no-TTY surfaces) and a literal RESTART step — the session tool registry is fixed at start, so mid-session authorization never surfaces `bios_load` in the running session
+- doctor and boot read remote codes as vocabulary: `bad_shape` = unservable id (never auth — do not re-login), `unauthorized` = token vs ownership, `not_found` = calm waiting state; doctor also names the false signal where `claude mcp list` prints `connection timed out after 30000ms` for a server that is really answering 401
+
+Server-side halves released alongside, outside this package: bios-server names every 422's reason in `x-bios-error`, and implant-mcp forwards it as `bad_shape: <reason>`.
+
 ## 1.0.18 - 2026-08-11
 
 - Boot status now follows whether the agent HAS the knowledge its BIOS names, not whether `wm_load` answered: a BIOS that carries its own knowledge reaches `LOADED` without the worldmodel service, instead of reporting itself degraded while holding a complete firmware
