@@ -46,7 +46,9 @@ allowed-tools: mcp__plugin_bios-implant_implant-local__local_selection, mcp__plu
 4. Let `local_stage` enforce downgrade-safe last-good storage.
 
 `LOAD-WM`
-1. After successful BIOS load, call `wm_load`.
+1. After successful BIOS load, call `wm_load` with the bound `agent_id`. The selector is what
+   resolves an owner with several agents — without it the worldmodel answers `unauthorized` for
+   every agent of a multi-agent owner.
 2. If `wm_load` fails, keep the BIOS result and never retry it in a loop.
 3. Decide the status by whether the agent HAS the knowledge its BIOS names, not by whether this tool answered. A BIOS that carries its own knowledge does not need `wm_load`, and reporting such a session as degraded tells the user the agent is knowledge-less when it is not.
 4. Name what is actually missing. `wm_load` unavailable while the BIOS supplies its own knowledge is a fact to state, not a degradation to claim.

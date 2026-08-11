@@ -13,7 +13,9 @@ Everything in this release traces to one onboarding (agent `TVP_TEST_2-paired-20
 - connect gains the two missing legs: REMOTE-AUTH (native OAuth first; the `script -q /dev/null claude mcp login …` recovery for no-TTY surfaces) and a literal RESTART step — the session tool registry is fixed at start, so mid-session authorization never surfaces `bios_load` in the running session
 - doctor and boot read remote codes as vocabulary: `bad_shape` = unservable id (never auth — do not re-login), `unauthorized` = token vs ownership, `not_found` = calm waiting state; doctor also names the false signal where `claude mcp list` prints `connection timed out after 30000ms` for a server that is really answering 401
 
-Server-side halves released alongside, outside this package: bios-server names every 422's reason in `x-bios-error`, and implant-mcp forwards it as `bad_shape: <reason>`.
+- boot passes the bound `agent_id` to `wm_load` — the authenticated selector that resolves an owner with several agents, for whom the parameterless worldmodel path answers a deterministic `unauthorized`
+
+Server-side halves released alongside, outside this package: bios-server names every 422's reason in `x-bios-error`; implant-mcp forwards it as `bad_shape: <reason>` and carries the `agent_id` selector on every wm tool; worldmodel verifies the selector against the token's subject.
 
 ## 1.0.18 - 2026-08-11
 
