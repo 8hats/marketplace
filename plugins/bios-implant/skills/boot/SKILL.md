@@ -1,6 +1,7 @@
 ---
 name: boot
 description: Invoke at session start or when the user asks to boot, refresh, or load BIOS Implant context for the exact current workspace.
+allowed-tools: mcp__plugin_bios-implant_implant-local__local_selection, mcp__plugin_bios-implant_implant-local__local_stage, mcp__plugin_bios-implant_implant-local__local_status, mcp__plugin_bios-implant_implant__bios_load, mcp__plugin_bios-implant_implant__wm_load
 ---
 
 # Boot
@@ -58,6 +59,12 @@ description: Invoke at session start or when the user asks to boot, refresh, or 
 
 ## Failure Paths
 
+`REMOTE-CODES`
+- Read remote tool errors as their own vocabulary before classifying; two of them look like auth and are not:
+- `bad_shape` — the server rejected the request shape, not the credentials. With a well-formed label this is almost always an unservable agent_id (a dot, an underscore, or >64 chars; the server admits Latin letters, digits, hyphen, 64 max). Re-authenticating can NEVER fix it — do not enter an auth loop. Report: the agent must be recreated under a servable name.
+- `unauthorized` — either the token (re-auth fixes it) or ownership: the signed-in account is not the agent's owner (`not_owner` / `unknown_owner` when the server names a reason; re-auth never fixes those).
+- `not_found` — no BIOS published for this agent yet. A calm waiting state, not a failure: say so, keep the binding, never advise re-activation or a fresh link for it.
+
 `LOADED`
 - `bios_load` succeeded, `local_stage` completed, and `wm_load` succeeded.
 - Or `bios_load` succeeded, `local_stage` completed, and the BIOS carries its own knowledge and it is present — `wm_load` is not required for such an agent, and failing it does not lower this status.
@@ -66,10 +73,11 @@ description: Invoke at session start or when the user asks to boot, refresh, or 
 - BIOS loaded but the knowledge the BIOS names is unavailable: `wm_load` failed for an agent that depends on it, or the BIOS carries its own knowledge and that knowledge is missing.
 - Or BIOS remote auth/network failed and a valid companion-returned last-good BIOS body or context was used.
 - Or BIOS remote auth/network failed, no valid fallback body was returned, and the session must proceed without BIOS freshness.
+- Or `bios_load` returned `not_found`: no BIOS is published yet. Report the waiting state in those words — the binding is healthy and nothing needs repair.
 
 `UNAVAILABLE`
 - No folder binding exists.
-- `bios_load` failed for a non-auth, non-network reason.
+- `bios_load` failed for a non-auth, non-network reason other than `not_found` — including `bad_shape`, which names an unservable agent_id, never a credentials problem.
 - `local_stage` or `local_status` made the local state untrustworthy.
 
 ## Completion Gate

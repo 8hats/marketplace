@@ -1,6 +1,7 @@
 ---
 name: doctor
 description: Invoke when the user asks to diagnose, verify, or check BIOS Implant installation, binding, authentication, or boot readiness.
+allowed-tools: mcp__plugin_bios-implant_implant-local__local_doctor, mcp__plugin_bios-implant_implant-local__local_status, mcp__plugin_bios-implant_implant__bios_load
 ---
 
 # Doctor
@@ -45,6 +46,10 @@ description: Invoke when the user asks to diagnose, verify, or check BIOS Implan
 3. Never print or restate the returned BIOS body.
 4. Report OAuth as missing only when an actual `bios_load` call returns an authentication error.
 5. If no binding exists or no callable `bios_load` exists, render the remote checks as `NOT CHECKED`; do not guess their authentication state.
+6. Read the probe's error code as its own vocabulary — the codes name different defects with different owners:
+   - `bad_shape` — the SERVER rejected the request shape. With a valid label this is almost always an unservable agent_id (a dot, an underscore, or >64 chars — the server admits Latin letters, digits, hyphen, 64 max). This is NOT an auth failure; re-authenticating cannot fix it. See `UNSERVABLE-ID`.
+   - `unauthorized` — the token is missing/expired (re-auth fixes it) or the signed-in account is not the agent's owner (re-auth NEVER fixes it; the reason string names `not_owner` / `unknown_owner` when the server provides one).
+   - `not_found` — no BIOS has been published for this agent yet. A waiting state, not a failure; never advise re-activation for it.
 
 `CLASSIFY`
 1. `HEALTHY`
@@ -66,7 +71,16 @@ description: Invoke when the user asks to diagnose, verify, or check BIOS Implan
 - Classify as `PARTIAL`.
 - In Codex, give exactly `codex mcp login implant` after confirming the host installer is current.
 - In Claude Code or Local Cowork, tell the owner to approve the harness-native OAuth prompt.
+- On a surface with no TTY (Claude Desktop, driven sessions) the interactive flow cannot start: `claude mcp login` aborts with "stdin isn't a terminal" and the `/mcp` panel does not exist. Give the owner the exact recovery to run themselves: `script -q /dev/null claude mcp login plugin:bios-implant:implant` as a background task, then open the authorization URL it prints.
+- Know the false signal: `claude mcp list` reporting `connection timed out after 30000ms` for an HTTP server almost always means an unauthorized 401 the client cannot begin OAuth for — not a network fault. Verify with a plain status probe before diagnosing the network.
+- Authorization completed mid-session does not surface `bios_load`/`wm_load` in the running session: the tool registry is fixed at session start. When the token is stored but the tools are absent, the next action is exactly: start a fresh session and run `boot`.
 - Never construct, edit, copy, or expose the authorization URL.
+
+`UNSERVABLE-ID`
+- Use this path when the read probe returns `bad_shape` with a well-formed label.
+- The bound agent_id violates the serve-side alphabet (Latin letters, digits, hyphen, 64 chars max) — it was minted before the creation gate existed. Every `bios_load` for it fails permanently; no retry, re-auth, or fresh link changes that.
+- Classify as `PARTIAL` with installation and local companion intact.
+- Next action: the owner recreates the agent under a servable name and issues a fresh setup link; then `connect` in this folder rebinds it.
 
 `NO-BINDING`
 - Classify as `PARTIAL`.

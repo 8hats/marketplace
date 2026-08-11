@@ -1,6 +1,7 @@
 ---
 name: connect
 description: Invoke when the user asks to connect, activate, or bind BIOS Implant to the exact current workspace in a supported local session.
+allowed-tools: mcp__plugin_bios-implant_implant-local__local_doctor, mcp__plugin_bios-implant_implant-local__local_activate, mcp__plugin_bios-implant_implant-local__local_connect, mcp__plugin_bios-implant_implant-local__local_selection, mcp__plugin_bios-implant_implant-local__local_status
 ---
 
 # Connect
@@ -50,22 +51,34 @@ description: Invoke when the user asks to connect, activate, or bind BIOS Implan
 
 `ACTIVATE`
 1. Pass the owner-provided setup URL exactly once to `local_activate`.
-2. Let `local_activate` fetch and validate the setup document and perform its single activation request from the native host.
+2. Let `local_activate` fetch and validate the setup document, perform its single activation request from the native host, and chain the folder binding for the current workspace root.
 3. Do not fetch the setup document separately and do not reconstruct or run its `curl` command in the Cowork workspace sandbox.
 4. Never restate, store, or log the one-use URL or capability.
-5. If `local_activate` cannot safely validate or follow the setup document, stop before binding.
-6. Require activation success and the returned `agent_id` before any local binding write.
+5. If `local_activate` cannot safely validate or follow the setup document, stop before binding. An `AGENT_ID_UNSERVABLE` refusal means the agent's id can never be served — the link is NOT spent; tell the owner to recreate the agent under a servable name (Latin letters, digits, hyphen, 64 chars max) and issue a fresh link.
+6. Require activation success and the returned `agent_id` before treating the workspace as connected.
+7. Read BOTH flags in the result: `registry_bound` (server-side owner binding) and `folder_bound` (local workspace binding). They are different writes; never collapse them into one "bound".
 
 `BIND`
-1. Call `local_connect` only after the exact folder path is confirmed and `local_activate` returned success with an `agent_id`.
-2. Pass only the exact binding inputs the local tool declares.
-3. Let `local_connect` own validation and exact folder binding.
-4. Never infer a folder, agent, or label from repo name, cwd ancestry, or prior sessions.
+1. Skip this step when `local_activate` reported `folder_bound: true` — the binding is already written; re-running `local_connect` is the sanctioned repair, not the default.
+2. If `folder_bound` is false, call `local_connect` with the returned `agent_id` for the exact confirmed folder.
+3. Pass only the exact binding inputs the local tool declares.
+4. Let `local_connect` own validation and exact folder binding.
+5. Never infer a folder, agent, or label from repo name, cwd ancestry, or prior sessions.
 
 `VERIFY`
 1. After success, re-query `local_status` or `local_selection` for the exact folder.
 2. Report the bound agent id, label if present, and exact bound folder.
 3. Never include secrets in the report.
+
+`REMOTE-AUTH`
+1. Binding and remote authorization are separate: the folder can be bound while the remote `implant` server (which serves `bios_load` / `wm_load`) still needs OAuth.
+2. If the harness surfaces a native OAuth prompt or `authenticate` tool for the remote implant server, tell the owner why it is needed and let them approve it. Never enter or echo client ids, callback URLs, scopes, or tokens.
+3. On a surface with no TTY (Claude Desktop, driven sessions), the interactive login cannot run. Give the owner this exact command to run in a regular terminal themselves: `claude mcp login plugin:bios-implant:implant` — and note that on a no-TTY surface it must be wrapped as `script -q /dev/null claude mcp login plugin:bios-implant:implant`.
+4. Know the false signal: `claude mcp list` reporting `connection timed out after 30000ms` for this server almost always means an unauthorized 401, not a network fault.
+
+`RESTART`
+1. The session's tool registry is fixed at session start: authorization completed mid-session does NOT make `bios_load` / `wm_load` appear in the running session.
+2. Finish by telling the owner the literal last step: start a fresh session and run the `boot` skill there. Authorization and the binding persist; the one-use link is never needed again.
 
 ## Failure Paths
 
@@ -87,7 +100,8 @@ description: Invoke when the user asks to connect, activate, or bind BIOS Implan
 
 Complete only when:
 - the exact folder was owner-specified,
-- `local_connect` succeeded,
+- the folder binding exists (`folder_bound: true` from `local_activate`, or a successful `local_connect` repair),
 - post-write status was re-checked,
 - the response distinguishes `AUTHENTICATED`, `INSTALLED-BUT-AUTH-REQUIRED`, or `BROKEN`,
+- the response states the remote-auth state and, unless already authenticated in a fresh session, ends with the literal restart instruction (new session, then `boot`),
 - and no secret was echoed or persisted.
