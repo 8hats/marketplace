@@ -9,6 +9,8 @@ import {
   localSelection,
   localStage,
   localStatus,
+  AGENT_ID_PATTERN,
+  LABEL_PATTERN,
   DomainError,
 } from './store.mjs';
 import {
@@ -73,8 +75,8 @@ const TOOL_DEFINITIONS = [
       additionalProperties: false,
       required: ['agent_id'],
       properties: {
-        agent_id: { type: 'string', pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$' },
-        label: { type: 'string', pattern: '^[A-Za-z0-9][A-Za-z0-9._:@-]{0,254}$', default: DEFAULT_BINDING_LABEL },
+        agent_id: { type: 'string', pattern: `^${AGENT_ID_PATTERN}$` },
+        label: { type: 'string', pattern: `^${LABEL_PATTERN}$`, default: DEFAULT_BINDING_LABEL },
         folder: { type: 'string' },
       },
     },
@@ -100,8 +102,8 @@ const TOOL_DEFINITIONS = [
       additionalProperties: false,
       required: ['agent_id', 'label', 'body', 'version', 'etag'],
       properties: {
-        agent_id: { type: 'string', pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$' },
-        label: { type: 'string', pattern: '^[A-Za-z0-9][A-Za-z0-9._:@-]{0,254}$' },
+        agent_id: { type: 'string', pattern: `^${AGENT_ID_PATTERN}$` },
+        label: { type: 'string', pattern: `^${LABEL_PATTERN}$` },
         body: { type: 'string' },
         version: { type: 'integer', minimum: 0 },
         etag: { type: 'string', minLength: 1 },
@@ -117,8 +119,8 @@ const TOOL_DEFINITIONS = [
       type: 'object',
       additionalProperties: false,
       properties: {
-        agent_id: { type: 'string', pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$' },
-        label: { type: 'string', pattern: '^[A-Za-z0-9][A-Za-z0-9._:@-]{0,254}$', default: DEFAULT_BINDING_LABEL },
+        agent_id: { type: 'string', pattern: `^${AGENT_ID_PATTERN}$` },
+        label: { type: 'string', pattern: `^${LABEL_PATTERN}$`, default: DEFAULT_BINDING_LABEL },
         folder: { type: 'string' },
       },
     },
@@ -222,10 +224,26 @@ async function boundedResponseText(response) {
 }
 
 function parseSetupDocument(document, expectedCapability, config) {
-  const agentMatch = /(?:^|\n)agent_id:\s*([A-Za-z0-9][A-Za-z0-9._-]{0,254})\s*(?:\n|$)/u.exec(document);
+  const agentMatch = new RegExp(`(?:^|\\n)agent_id:\\s*(${AGENT_ID_PATTERN})\\s*(?:\\n|$)`, 'u').exec(document);
   const endpointMatch = /-X POST '([^'\r\n]+)'/u.exec(document);
   const capabilityMatch = /-H 'X-Enrollment-Capability:\s*([A-Za-z0-9_-]+)'/u.exec(document);
   if (!agentMatch || !endpointMatch || !capabilityMatch) {
+    // Tell an unservable id apart from a malformed document BEFORE any activation request: the
+    // remedies differ (recreate the agent vs re-issue the link), and stopping here keeps the
+    // one-use capability unspent either way. Without this branch, a document naming an id with
+    // a dot, an underscore, or >64 chars reads as "missing its activation contract" — or worse,
+    // activates, spends the link, and leaves bios_load answering `bad_shape` forever
+    // (TVP_TEST_2-paired-2026-08, 2026-08-10).
+    const wideAgent = /(?:^|\n)agent_id:\s*(\S{1,255})\s*(?:\n|$)/u.exec(document);
+    if (!agentMatch && wideAgent && endpointMatch && capabilityMatch) {
+      throw new DomainError(
+        'AGENT_ID_UNSERVABLE',
+        `The setup document names agent_id "${wideAgent[1]}", which the BIOS service cannot `
+        + 'serve (Latin letters, digits and hyphen only, 64 characters max). Ask the owner to '
+        + 'recreate the agent under a servable name; the one-use link was not spent.',
+        { agent_id: wideAgent[1], retryable: false, link_spent: false },
+      );
+    }
     throw new DomainError('SETUP_DOCUMENT_INVALID', 'The setup document is missing its activation contract.', {});
   }
   if (capabilityMatch[1] !== expectedCapability) {
@@ -337,11 +355,16 @@ async function localActivate(setupUrl) {
       { status: 200, retryable: false, link_spent: true },
     );
   }
+  // `registry_bound`, deliberately NOT `bound`: the registry's own response says `bound: true`
+  // meaning the owner_sub↔agent binding landed server-side, while the local FOLDER binding does
+  // not exist yet. Echoing the bare word taught a caller to stop here — with the one-use link
+  // already spent and the workspace still unbound (2026-08-10). The folder half is reported by
+  // the tool layer, which chains local_connect and answers with both flags.
   return {
     ok: true,
     status: 200,
     agent_id: contract.agentId,
-    bound: true,
+    registry_bound: true,
     link_spent: true,
   };
 }
@@ -384,9 +407,37 @@ async function executeTool(session, name, args) {
   switch (name) {
     case 'local_activate': {
       const result = await localActivate(args.setup_url);
+      // Activation wrote the REGISTRY binding and spent the one-use link — but the local FOLDER
+      // binding is a separate write, and a caller that stops at "bound" leaves the workspace
+      // unbound with nothing left to retry (2026-08-10). Finish the job here: bind the current
+      // workspace root and report the two bindings apart. The bind is idempotent and local-only,
+      // so a failure never un-activates anything — it only changes the next step we name.
+      let binding = null;
+      let bindFailure = null;
+      try {
+        binding = await localConnect({
+          agentId: result.agent_id,
+          label: DEFAULT_BINDING_LABEL,
+          roots: await session.getRoots(),
+        });
+      } catch (error) {
+        bindFailure = safeErrorMessage(error);
+      }
+      const structured = {
+        ...result,
+        folder_bound: binding !== null,
+        ...(binding === null
+          ? { folder_bind_error: bindFailure }
+          : { workspace_root: binding.workspace_root, label: binding.label }),
+      };
       return createTextResult(
-        `Activated ${result.agent_id}. The one-use setup link is now spent.`,
-        result,
+        binding === null
+          ? `Activated ${result.agent_id}; the one-use setup link is now spent. The workspace `
+            + `folder is NOT bound yet (${bindFailure}). Run local_connect with this agent_id `
+            + 'for the exact current folder, then confirm with local_selection.'
+          : `Activated ${result.agent_id} and bound ${binding.workspace_root} to it `
+            + `(label ${binding.label}). The one-use setup link is now spent.`,
+        structured,
       );
     }
     case 'local_connect': {

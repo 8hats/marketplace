@@ -5,6 +5,7 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import readlineModule from 'node:readline';
 import { once } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -44,22 +45,52 @@ function biosBody(version) {
   return `---\nversion: ${version}\n---\n# demo\nBIOS v${version}\n`;
 }
 
-async function runEntrypoint(entrypoint, requests, { env = {} } = {}) {
+async function runEntrypoint(entrypoint, requests, { env = {}, clientHandlers = {} } = {}) {
   const child = spawn(process.execPath, [entrypoint], {
     env: { ...process.env, ...env },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
-  const stdout = [];
   const stderr = [];
-  child.stdout.on('data', (chunk) => stdout.push(chunk.toString('utf8')));
+  const messages = [];
   child.stderr.on('data', (chunk) => stderr.push(chunk.toString('utf8')));
-  child.stdin.end(`${requests.map((request) => JSON.stringify(request)).join('\n')}\n`);
+
+  // The companion may issue its own client requests mid-call (roots/list during the activation
+  // bind chain). Those cannot be pre-queued on stdin: they are only routable once the companion
+  // has REGISTERED the pending id, which happens after its own network round-trips. So the
+  // harness answers interactively, and closes stdin only once every id'd request got its
+  // response — closing earlier would race the companion's in-flight work.
+  const expectedIds = new Set(requests.filter((request) => 'id' in request).map((request) => request.id));
+  const lineReader = readlineModule.createInterface({ input: child.stdout, crlfDelay: Infinity });
+  lineReader.on('line', (line) => {
+    if (line.trim() === '') return;
+    let message;
+    try {
+      message = JSON.parse(line);
+    } catch {
+      return;
+    }
+    messages.push(message);
+    if ('method' in message && 'id' in message) {
+      const handler = clientHandlers[message.method];
+      const response = handler
+        ? { jsonrpc: '2.0', id: message.id, result: handler(message.params) }
+        : { jsonrpc: '2.0', id: message.id, error: { code: -32601, message: `no handler for ${message.method}` } };
+      child.stdin.write(`${JSON.stringify(response)}\n`);
+      return;
+    }
+    if ('id' in message) {
+      expectedIds.delete(message.id);
+      if (expectedIds.size === 0) child.stdin.end();
+    }
+  });
+  child.stdin.write(`${requests.map((request) => JSON.stringify(request)).join('\n')}\n`);
+  if (expectedIds.size === 0) child.stdin.end();
 
   const [exitCode] = await once(child, 'close');
   return {
     exitCode,
     stderr: stderr.join(''),
-    responses: stdout.join('').trim().split('\n').filter(Boolean).map((line) => JSON.parse(line)),
+    responses: messages,
   };
 }
 
@@ -104,28 +135,19 @@ test('packaged local MCP entrypoint serves JSON-RPC when launched through a syml
   });
 });
 
-test('packaged local MCP performs activation over real host networking without exposing the capability', { concurrency: false }, async (t) => {
-  const sandbox = await makeSandbox(t, 'implant-local-activation-');
-  const stagedPlugin = path.join(sandbox, 'staged-plugin');
-  await fs.symlink(PROJECT_ROOT, stagedPlugin, 'dir');
-
-  const capability = 'test-capability-that-must-never-appear-in-tool-output';
-  const agentId = 'agent-real-network';
-  let setupReads = 0;
-  let activationWrites = 0;
-  let receivedCapability = null;
-
+/** Serve a well-formed setup document + activation endpoint for `agentId` on a loopback server. */
+function makeActivationServer(t, agentId, capability, counters) {
   const server = http.createServer((request, response) => {
     const origin = `http://127.0.0.1:${server.address().port}`;
     if (request.method === 'GET' && request.url === `/setup/${capability}/SETUP.md`) {
-      setupReads += 1;
+      counters.setupReads += 1;
       response.writeHead(200, { 'content-type': 'text/markdown; charset=utf-8' });
       response.end(`# Agent setup\n\n\`\`\`text\nagent_id: ${agentId}\n\`\`\`\n\n\`\`\`bash\ncurl -X POST '${origin}/api/registry/activate' \\\n+  -H 'X-Enrollment-Capability: ${capability}'\n\`\`\`\n`);
       return;
     }
     if (request.method === 'POST' && request.url === '/api/registry/activate') {
-      activationWrites += 1;
-      receivedCapability = request.headers['x-enrollment-capability'];
+      counters.activationWrites += 1;
+      counters.receivedCapability = request.headers['x-enrollment-capability'];
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(JSON.stringify({ agent_id: agentId, bound: true }));
       return;
@@ -133,8 +155,24 @@ test('packaged local MCP performs activation over real host networking without e
     response.writeHead(404).end();
   });
   server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
   t.after(() => new Promise((resolve) => server.close(resolve)));
+  return server;
+}
+
+test('packaged local MCP performs activation over real host networking without exposing the capability', { concurrency: false }, async (t) => {
+  const sandbox = await makeSandbox(t, 'implant-local-activation-');
+  const stagedPlugin = path.join(sandbox, 'staged-plugin');
+  await fs.symlink(PROJECT_ROOT, stagedPlugin, 'dir');
+  const workspace = path.join(sandbox, 'workspace');
+  const stateRoot = path.join(sandbox, 'state');
+  await fs.mkdir(workspace, { recursive: true });
+  await fs.mkdir(stateRoot, { recursive: true });
+
+  const capability = 'test-capability-that-must-never-appear-in-tool-output';
+  const agentId = 'agent-real-network';
+  const counters = { setupReads: 0, activationWrites: 0, receivedCapability: null };
+  const server = makeActivationServer(t, agentId, capability, counters);
+  await once(server, 'listening');
 
   const origin = `http://127.0.0.1:${server.address().port}`;
   const result = await runEntrypoint(path.join(stagedPlugin, COMPANION_ENTRYPOINT), [
@@ -153,18 +191,135 @@ test('packaged local MCP performs activation over real host networking without e
       BIOS_IMPLANT_SETUP_ORIGIN: origin,
       BIOS_IMPLANT_REGISTRY_ORIGIN: origin,
       BIOS_IMPLANT_ALLOW_INSECURE_LOCAL_TEST: '1',
+      BIOS_IMPLANT_STATE_ROOT: stateRoot,
+    },
+    // Activation chains the folder binding, which asks the client for roots/list mid-call —
+    // answered here the way a real MCP host would.
+    clientHandlers: {
+      'roots/list': () => ({ roots: [{ uri: pathToFileURL(workspace).href, name: 'ws' }] }),
     },
   });
 
   assert.equal(result.exitCode, 0);
   assert.equal(result.stderr, '');
-  assert.equal(setupReads, 1);
-  assert.equal(activationWrites, 1);
-  assert.equal(receivedCapability, capability);
-  assert.equal(result.responses[1].result.isError, false);
-  assert.equal(result.responses[1].result.structuredContent.agent_id, agentId);
-  assert.equal(result.responses[1].result.structuredContent.bound, true);
+  assert.equal(counters.setupReads, 1);
+  assert.equal(counters.activationWrites, 1);
+  assert.equal(counters.receivedCapability, capability);
+  // stdout carries the server's own roots/list REQUEST too — index responses by id, requests out.
+  const byId = new Map(result.responses.filter((m) => !('method' in m)).map((m) => [m.id, m]));
+  const activate = byId.get(2).result;
+  assert.equal(activate.isError, false);
+  assert.equal(activate.structuredContent.agent_id, agentId);
+  assert.equal(activate.structuredContent.registry_bound, true);
+  // The trap this shape kills: a bare `bound: true` taught callers to stop before the folder
+  // binding existed, with the one-use link already spent (2026-08-10).
+  assert.equal('bound' in activate.structuredContent, false);
+  assert.equal(activate.structuredContent.folder_bound, true);
+  assert.equal(activate.structuredContent.link_spent, true);
+  assert.equal(activate.structuredContent.workspace_root, await fs.realpath(workspace));
   assert.doesNotMatch(JSON.stringify(result), new RegExp(capability));
+});
+
+test('local_activate refuses a setup document naming an unservable agent_id without spending the link', { concurrency: false }, async (t) => {
+  const sandbox = await makeSandbox(t, 'implant-local-unservable-');
+  const stateRoot = path.join(sandbox, 'state');
+  await fs.mkdir(stateRoot, { recursive: true });
+  setStateRoot(t, stateRoot);
+
+  const capability = 'test-capability-for-an-unservable-agent-id-document';
+  // The 2026-08-10 incident id: underscores pass the mint side and 422 on every bios_load.
+  const agentId = 'TVP_TEST_2-paired-2026-08';
+  const counters = { setupReads: 0, activationWrites: 0, receivedCapability: null };
+  const server = makeActivationServer(t, agentId, capability, counters);
+  await once(server, 'listening');
+  const origin = `http://127.0.0.1:${server.address().port}`;
+
+  const previousEnv = {};
+  for (const [key, value] of Object.entries({
+    BIOS_IMPLANT_SETUP_ORIGIN: origin,
+    BIOS_IMPLANT_REGISTRY_ORIGIN: origin,
+    BIOS_IMPLANT_ALLOW_INSECURE_LOCAL_TEST: '1',
+  })) {
+    previousEnv[key] = process.env[key];
+    process.env[key] = value;
+  }
+  t.after(() => {
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  const companion = await loadCompanionModule();
+  const session = companion.createSession({
+    listRoots: async () => [sandbox],
+    output: new PassThrough(),
+    error: new PassThrough(),
+  });
+  const response = await companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 2,
+    method: 'tools/call',
+    params: {
+      name: 'local_activate',
+      arguments: { setup_url: `${origin}/setup/${capability}/SETUP.md` },
+    },
+  });
+
+  assert.equal(response.result.isError, true);
+  assert.equal(response.result.structuredContent.code, 'AGENT_ID_UNSERVABLE');
+  assert.equal(response.result.structuredContent.details.link_spent, false);
+  // Stopped BEFORE the activation request: the one-use capability was never presented.
+  assert.equal(counters.activationWrites, 0);
+  assert.match(response.result.content[0].text, /cannot\s+serve/);
+  assert.match(response.result.content[0].text, /recreate the agent/);
+});
+
+test('local tool schemas and store enforce the bios-server servable alphabet', { concurrency: false }, async (t) => {
+  const sandbox = await makeSandbox(t, 'implant-local-servable-');
+  const stateRoot = path.join(sandbox, 'state');
+  await fs.mkdir(stateRoot, { recursive: true });
+  setStateRoot(t, stateRoot);
+
+  const companion = await loadCompanionModule();
+  const session = companion.createSession({
+    listRoots: async () => [sandbox],
+    output: new PassThrough(),
+    error: new PassThrough(),
+  });
+
+  const tools = await companion.handleRequest(session, {
+    jsonrpc: '2.0', id: 1, method: 'tools/list', params: {},
+  });
+  const connectTool = tools.result.tools.find((tool) => tool.name === 'local_connect');
+  // The serve-side rule, byte-identical to bios-server's slug and app-v2's AGENT_ID_SERVABLE:
+  // letters, digits, hyphen, 64 max. A wider pattern here binds ids bios_load will 422 forever.
+  assert.equal(connectTool.inputSchema.properties.agent_id.pattern, '^[A-Za-z0-9][A-Za-z0-9-]{0,63}$');
+  assert.equal(connectTool.inputSchema.properties.label.pattern, '^[A-Za-z0-9][A-Za-z0-9-]{0,63}$');
+
+  const bindUnservable = await companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 2,
+    method: 'tools/call',
+    params: {
+      name: 'local_connect',
+      arguments: { agent_id: 'TVP_TEST_2-paired-2026-08', folder: sandbox },
+    },
+  });
+  assert.equal(bindUnservable.result.isError, true);
+  assert.equal(bindUnservable.result.structuredContent.code, 'INVALID_AGENT_ID');
+
+  const bindServable = await companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 3,
+    method: 'tools/call',
+    params: {
+      name: 'local_connect',
+      arguments: { agent_id: 'TVP-TEST-3-paired-2026-08', folder: sandbox },
+    },
+  });
+  assert.equal(bindServable.result.isError ?? false, false);
+  assert.equal(bindServable.result.structuredContent.agent_id, 'TVP-TEST-3-paired-2026-08');
 });
 
 test('handleRequest advertises initialize and exactly six tools', { concurrency: false }, async () => {

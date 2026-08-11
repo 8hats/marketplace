@@ -40,8 +40,18 @@ export const OWNERSHIP_OWNER_ID = '@agentuniversity/bios-implant';
 export const OWNERSHIP_LEDGER_RELATIVE_PATH = 'bios-implant/owned-state.jsonl';
 const OWNERSHIP_LEDGER_MODE = 0o600;
 
-export const AGENT_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/;
-export const LABEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,254}$/;
+// The servable alphabet. bios-server slug-validates agent_id AND label on every /load, BEFORE
+// auth, admitting letters, digits and hyphen only, 64 chars max (its src/safety/slug.ts) — dots
+// and underscores are excluded there on purpose. The previous wider set here bound
+// TVP_TEST_2-paired-2026-08 without complaint (2026-08-10): activation succeeded, the one-use
+// link was spent, and every bios_load then answered a bare `bad_shape`, permanently. Binding an
+// id the server will never serve is not a binding — it is a deferred failure, so the rule here
+// must be the serve-side rule. Byte-identical twins: app-v2 lib/setup/render.ts
+// (AGENT_ID_SERVABLE) and the local-companion tool schemas, which derive from these constants.
+export const AGENT_ID_PATTERN = '[A-Za-z0-9][A-Za-z0-9-]{0,63}';
+export const LABEL_PATTERN = AGENT_ID_PATTERN; // labels face the same bios-server slug check
+export const AGENT_ID_RE = new RegExp(`^${AGENT_ID_PATTERN}$`);
+export const LABEL_RE = new RegExp(`^${LABEL_PATTERN}$`);
 
 export class DomainError extends Error {
   constructor(code, message, details = {}) {
