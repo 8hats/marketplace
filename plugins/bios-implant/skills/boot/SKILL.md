@@ -31,6 +31,7 @@ allowed-tools: mcp__plugin_bios-implant_implant-local__local_selection, mcp__plu
 - Never claim fallback context was loaded unless `local_status` actually returned a valid last-good BIOS body or context.
 - Never replace a newer cached generation with an older one.
 - Never inspect credential storage to explain an authorization failure: no keychain reads, no token or OAuth config files, no credential dumps. Report the refusal and the recovery action instead.
+- Never call the remote server's harness-injected `authenticate` tool, and never relay a raw `…/auth?…` authorization URL into chat. Its PKCE challenge and localhost callback belong to the one flow that minted it; once the owner authorizes anywhere else — or that flow's listener dies — the pasted link is a challenge that cannot complete. Authorization is the owner's action in the host plugin UI (see REMOTE-CODES `unauthorized`).
 
 ## Protocol
 
@@ -64,7 +65,7 @@ allowed-tools: mcp__plugin_bios-implant_implant-local__local_selection, mcp__plu
 `REMOTE-CODES`
 - Read remote tool errors as their own vocabulary before classifying; two of them look like auth and are not:
 - `bad_shape` — the server rejected the request shape, not the credentials. With a well-formed label this is almost always an unservable agent_id (a dot, an underscore, or >64 chars; the server admits Latin letters, digits, hyphen, 64 max). Re-authenticating can NEVER fix it — do not enter an auth loop. Report: the agent must be recreated under a servable name.
-- `unauthorized` — either the token (re-auth fixes it) or ownership: the signed-in account is not the agent's owner (`not_owner` / `unknown_owner` when the server names a reason; re-auth never fixes those).
+- `unauthorized` — either the token (re-auth fixes it) or ownership: the signed-in account is not the agent's owner (`not_owner` / `unknown_owner` when the server names a reason; re-auth never fixes those). When it IS the token, name the exact action: in Claude Code, `/plugin` → Installed → **bios-implant** → MCP server `implant` → **Authenticate**; in Claude Desktop, the plugin browser's Authorize on bios-implant — then a fresh session, because mid-session authorization never surfaces the remote tools in the running one. Never a pasted authorization URL.
 - `not_found` — no BIOS published for this agent yet. A calm waiting state, not a failure: say so, keep the binding, never advise re-activation or a fresh link for it.
 
 `LOADED`

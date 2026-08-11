@@ -2,6 +2,30 @@
 
 All notable changes to BIOS Implant are documented in this file.
 
+## 1.0.20 - 2026-08-11
+
+Everything here traces to the MEOW-20 onboarding transcript (2026-08-11).
+
+- `local_activate` absorbs transient network failures itself: three attempts with 300/900ms
+  backoff for the setup fetch and the activation request, and the error message now names the
+  concrete cause (`ECONNREFUSED`, `ENOTFOUND`, …) and the attempt count. MEOW-20's first
+  activation died on one hiccup and surfaced a scary failure whose whole remedy was "run it
+  again 24 seconds later"
+- An activation TIMEOUT is deliberately NOT auto-retried and gets its own code
+  (`ACTIVATION_TIMEOUT`, `link_spent: null`): the request may have reached the registry with
+  only the response lost, and a blind resend of a one-use capability reads back as "spent",
+  turning a successful activation into a reported failure. The message routes the operator
+  through a state check instead. `BIOS_IMPLANT_ACTIVATION_TIMEOUT_MS` makes the contract
+  testable
+- Remote authorization instructions now name the host plugin UI as THE action — Claude Code:
+  `/plugin` → Installed → bios-implant → server `implant` → Authenticate; Claude Desktop: the
+  plugin browser's Authorize — in boot (where an unauthorized `bios_load` surfaces) and in
+  connect's REMOTE-AUTH. Both skills ban calling the harness-injected `authenticate` tool and
+  relaying its raw `…/auth?…` URL into chat: that URL's PKCE challenge and localhost callback
+  belong to the one flow that minted it, and MEOW-20's owner authorized through `/plugin`,
+  which minted its own client and port — the pasted URL was already a challenge that could
+  never complete
+
 ## 1.0.19 - 2026-08-11
 
 Everything in this release traces to one onboarding (agent `TVP_TEST_2-paired-2026-08`, 2026-08-10) that activated cleanly and never booted.

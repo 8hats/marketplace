@@ -72,9 +72,11 @@ allowed-tools: mcp__plugin_bios-implant_implant-local__local_doctor, mcp__plugin
 
 `REMOTE-AUTH`
 1. Binding and remote authorization are separate: the folder can be bound while the remote `implant` server (which serves `bios_load` / `wm_load`) still needs OAuth.
-2. If the harness surfaces a native OAuth prompt or `authenticate` tool for the remote implant server, tell the owner why it is needed and let them approve it. Never enter or echo client ids, callback URLs, scopes, or tokens.
-3. On a surface with no TTY (Claude Desktop, driven sessions), the interactive login cannot run. Give the owner this exact command to run in a regular terminal themselves: `claude mcp login plugin:bios-implant:implant` — and note that on a no-TTY surface it must be wrapped as `script -q /dev/null claude mcp login plugin:bios-implant:implant`.
-4. Know the false signal: `claude mcp list` reporting `connection timed out after 30000ms` for this server almost always means an unauthorized 401, not a network fault.
+2. The one reliable authorization surface is the host's own plugin UI, which runs the flow with a live callback listener. In Claude Code, tell the owner exactly: run `/plugin` → Installed → **bios-implant** → MCP server `implant` → **Authenticate**. In Claude Desktop: the plugin browser's Authorize action on bios-implant. A native OAuth prompt the host raises on its own is the same flow — approving it is fine.
+3. Never call the harness-injected `authenticate` tool, and never relay, print, or ask the owner to open a raw `…/auth?…` authorization URL from chat. That URL's PKCE challenge, state, and localhost callback belong to the one flow that minted it; the moment authorization runs anywhere else — or that flow's listener dies — the pasted link is a challenge that cannot complete. (Observed 2026-08-11, MEOW-20: the owner authorized through `/plugin`, which minted its own client and port; the URL sitting in chat was already dead.)
+4. Never enter or echo client ids, callback URLs, scopes, or tokens.
+5. Only when no plugin UI exists on the surface (driven/no-TTY sessions), give the owner this exact command for a regular terminal: `claude mcp login plugin:bios-implant:implant` — wrapped as `script -q /dev/null claude mcp login plugin:bios-implant:implant` where no TTY exists at all.
+6. Know the false signal: `claude mcp list` reporting `connection timed out after 30000ms` for this server almost always means an unauthorized 401, not a network fault.
 
 `RESTART`
 1. The session's tool registry is fixed at session start: authorization completed mid-session does NOT make `bios_load` / `wm_load` appear in the running session.
@@ -87,7 +89,9 @@ allowed-tools: mcp__plugin_bios-implant_implant-local__local_doctor, mcp__plugin
 
 `INSTALLED-BUT-AUTH-REQUIRED`
 - The local companion is present, but activation or remote auth is still required.
-- Report one exact next action for the owner.
+- Report one exact next action for the owner. For remote auth that action is the REMOTE-AUTH
+  step 2 instruction verbatim (`/plugin` → Installed → bios-implant → `implant` → Authenticate,
+  or the Desktop plugin browser) — never a pasted authorization URL.
 
 `BROKEN`
 - The local companion is missing, invalid, or the binding state cannot be trusted.

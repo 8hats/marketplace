@@ -275,6 +275,187 @@ test('local_activate refuses a setup document naming an unservable agent_id with
   assert.match(response.result.content[0].text, /recreate the agent/);
 });
 
+/** Env plumbing shared by the transient-network activation tests below. */
+function setActivationEnv(t, entries) {
+  const previousEnv = {};
+  for (const [key, value] of Object.entries(entries)) {
+    previousEnv[key] = process.env[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  t.after(() => {
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+}
+
+async function callLocalActivate(sandbox, origin, capability) {
+  const companion = await loadCompanionModule();
+  const session = companion.createSession({
+    listRoots: async () => [sandbox],
+    output: new PassThrough(),
+    error: new PassThrough(),
+  });
+  return companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 7,
+    method: 'tools/call',
+    params: {
+      name: 'local_activate',
+      arguments: { setup_url: `${origin}/setup/${capability}/SETUP.md` },
+    },
+  });
+}
+
+test('local_activate absorbs one transient setup-service failure instead of surfacing it', { concurrency: false }, async (t) => {
+  // The MEOW-20 shape (2026-08-11): the first fetch died on a network hiccup, the manual retry
+  // 24 seconds later succeeded. That retry now lives inside the companion — the operator sees
+  // one successful activation, not a scary failure whose remedy is "run it again".
+  const sandbox = await makeSandbox(t, 'implant-local-retry-ok-');
+  const stateRoot = path.join(sandbox, 'state');
+  await fs.mkdir(stateRoot, { recursive: true });
+  setStateRoot(t, stateRoot);
+
+  const capability = 'test-capability-transient-setup-failure-recovers';
+  const agentId = 'RETRY-OK-paired-2026-08';
+  const counters = { setupReads: 0, activationWrites: 0, receivedCapability: null };
+  const server = http.createServer((request, response) => {
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    if (request.method === 'GET' && request.url === `/setup/${capability}/SETUP.md`) {
+      counters.setupReads += 1;
+      if (counters.setupReads === 1) {
+        request.socket.destroy(); // the transient class: reset before any response
+        return;
+      }
+      response.writeHead(200, { 'content-type': 'text/markdown; charset=utf-8' });
+      response.end(`# Agent setup\n\n\`\`\`text\nagent_id: ${agentId}\n\`\`\`\n\n\`\`\`bash\ncurl -X POST '${origin}/api/registry/activate' \\\n+  -H 'X-Enrollment-Capability: ${capability}'\n\`\`\`\n`);
+      return;
+    }
+    if (request.method === 'POST' && request.url === '/api/registry/activate') {
+      counters.activationWrites += 1;
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ agent_id: agentId, bound: true }));
+      return;
+    }
+    response.writeHead(404).end();
+  });
+  server.listen(0, '127.0.0.1');
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  await once(server, 'listening');
+  const origin = `http://127.0.0.1:${server.address().port}`;
+
+  setActivationEnv(t, {
+    BIOS_IMPLANT_SETUP_ORIGIN: origin,
+    BIOS_IMPLANT_REGISTRY_ORIGIN: origin,
+    BIOS_IMPLANT_ALLOW_INSECURE_LOCAL_TEST: '1',
+  });
+
+  const response = await callLocalActivate(sandbox, origin, capability);
+  assert.ok(!response.result.isError, JSON.stringify(response.result));
+  assert.equal(response.result.structuredContent.agent_id, agentId);
+  assert.equal(counters.setupReads, 2); // the retry, not a duplicate flow
+  assert.equal(counters.activationWrites, 1); // the capability was presented exactly once
+});
+
+test('a dead activation origin fails after bounded retries, naming the cause — link unspent', { concurrency: false }, async (t) => {
+  const sandbox = await makeSandbox(t, 'implant-local-retry-dead-');
+  const stateRoot = path.join(sandbox, 'state');
+  await fs.mkdir(stateRoot, { recursive: true });
+  setStateRoot(t, stateRoot);
+
+  // A loopback port with provably nothing listening: bind, read it, close.
+  const probe = http.createServer(() => {});
+  probe.listen(0, '127.0.0.1');
+  await once(probe, 'listening');
+  const deadOrigin = `http://127.0.0.1:${probe.address().port}`;
+  await new Promise((resolve) => probe.close(resolve));
+
+  const capability = 'test-capability-dead-activation-origin-bounded-retries';
+  const agentId = 'RETRY-DEAD-paired-2026-08';
+  const counters = { setupReads: 0 };
+  const server = http.createServer((request, response) => {
+    if (request.method === 'GET' && request.url === `/setup/${capability}/SETUP.md`) {
+      counters.setupReads += 1;
+      response.writeHead(200, { 'content-type': 'text/markdown; charset=utf-8' });
+      response.end(`# Agent setup\n\n\`\`\`text\nagent_id: ${agentId}\n\`\`\`\n\n\`\`\`bash\ncurl -X POST '${deadOrigin}/api/registry/activate' \\\n+  -H 'X-Enrollment-Capability: ${capability}'\n\`\`\`\n`);
+      return;
+    }
+    response.writeHead(404).end();
+  });
+  server.listen(0, '127.0.0.1');
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  await once(server, 'listening');
+  const origin = `http://127.0.0.1:${server.address().port}`;
+
+  setActivationEnv(t, {
+    BIOS_IMPLANT_SETUP_ORIGIN: origin,
+    BIOS_IMPLANT_REGISTRY_ORIGIN: deadOrigin,
+    BIOS_IMPLANT_ALLOW_INSECURE_LOCAL_TEST: '1',
+  });
+
+  const response = await callLocalActivate(sandbox, origin, capability);
+  assert.equal(response.result.isError, true);
+  assert.equal(response.result.structuredContent.code, 'ACTIVATION_UNREACHABLE');
+  assert.equal(response.result.structuredContent.details.link_spent, false);
+  // The message carries what the operator needs: the concrete cause and that retries happened.
+  assert.match(response.result.content[0].text, /ECONNREFUSED/);
+  assert.match(response.result.content[0].text, /3 attempts/);
+});
+
+test('an activation TIMEOUT is not auto-retried and reports the link state as unknown', { concurrency: false }, async (t) => {
+  // The one failure where "the link was not spent" would be a guess: the request may have
+  // reached the registry with only the response lost. A blind resend of a one-use capability
+  // reads back as "spent" and turns a successful activation into a reported failure — so the
+  // companion must hit the endpoint EXACTLY once and route the operator to a state check.
+  const sandbox = await makeSandbox(t, 'implant-local-retry-timeout-');
+  const stateRoot = path.join(sandbox, 'state');
+  await fs.mkdir(stateRoot, { recursive: true });
+  setStateRoot(t, stateRoot);
+
+  const capability = 'test-capability-hanging-activation-service-no-blind-resend';
+  const agentId = 'RETRY-HANG-paired-2026-08';
+  const counters = { activationWrites: 0 };
+  const server = http.createServer((request, response) => {
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    if (request.method === 'GET' && request.url === `/setup/${capability}/SETUP.md`) {
+      response.writeHead(200, { 'content-type': 'text/markdown; charset=utf-8' });
+      response.end(`# Agent setup\n\n\`\`\`text\nagent_id: ${agentId}\n\`\`\`\n\n\`\`\`bash\ncurl -X POST '${origin}/api/registry/activate' \\\n+  -H 'X-Enrollment-Capability: ${capability}'\n\`\`\`\n`);
+      return;
+    }
+    if (request.method === 'POST' && request.url === '/api/registry/activate') {
+      counters.activationWrites += 1;
+      void response; // hold the response open — the service "hangs"
+      return;
+    }
+    response.writeHead(404).end();
+  });
+  server.listen(0, '127.0.0.1');
+  t.after(() => new Promise((resolve) => {
+    server.closeAllConnections();
+    server.close(resolve);
+  }));
+  await once(server, 'listening');
+  const origin = `http://127.0.0.1:${server.address().port}`;
+
+  setActivationEnv(t, {
+    BIOS_IMPLANT_SETUP_ORIGIN: origin,
+    BIOS_IMPLANT_REGISTRY_ORIGIN: origin,
+    BIOS_IMPLANT_ALLOW_INSECURE_LOCAL_TEST: '1',
+    BIOS_IMPLANT_ACTIVATION_TIMEOUT_MS: '400',
+  });
+
+  const response = await callLocalActivate(sandbox, origin, capability);
+  assert.equal(response.result.isError, true);
+  assert.equal(response.result.structuredContent.code, 'ACTIVATION_TIMEOUT');
+  assert.equal(response.result.structuredContent.details.link_spent, null);
+  assert.equal(response.result.structuredContent.details.retryable, false);
+  assert.equal(counters.activationWrites, 1); // exactly one presentation — no blind resend
+  assert.match(response.result.content[0].text, /MAY be spent/);
+  assert.match(response.result.content[0].text, /before re-activating/);
+});
+
 test('local tool schemas and store enforce the bios-server servable alphabet', { concurrency: false }, async (t) => {
   const sandbox = await makeSandbox(t, 'implant-local-servable-');
   const stateRoot = path.join(sandbox, 'state');

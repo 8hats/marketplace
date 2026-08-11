@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 
 export const PACKAGE_NAME = "@agentuniversity/bios-implant";
-export const PACKAGE_VERSION = "1.0.19";
+export const PACKAGE_VERSION = "1.0.20";
 
 export const CATALOG_NAME = "agent-university";
 export const PLUGIN_NAME = "bios-implant";

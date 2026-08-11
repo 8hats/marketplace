@@ -28,7 +28,11 @@ const DEFAULT_BINDING_LABEL = DEFAULT_LABEL ?? 'default';
 export const DEFAULT_CLIENT_REQUEST_TIMEOUT_MS = 5_000;
 const DEFAULT_SETUP_ORIGIN = 'https://app.agents.university';
 const DEFAULT_REGISTRY_ORIGIN = 'https://registry.agents.university';
-const ACTIVATION_TIMEOUT_MS = 10_000;
+// 10s default; env-tunable so the timeout CONTRACT is testable without a ten-second test.
+const ACTIVATION_TIMEOUT_MS = (() => {
+  const raw = Number.parseInt(process.env.BIOS_IMPLANT_ACTIVATION_TIMEOUT_MS ?? '', 10);
+  return Number.isInteger(raw) && raw > 0 ? raw : 10_000;
+})();
 const MAX_ACTIVATION_RESPONSE_BYTES = 64 * 1024;
 
 const READ_ONLY_ANNOTATIONS = Object.freeze({
@@ -270,6 +274,44 @@ function parseSetupDocument(document, expectedCapability, config) {
   };
 }
 
+// Bounded auto-retry for TRANSIENT fetch failures (DNS, refused, reset): the class the
+// MEOW-20 activation hit on 2026-08-11 — one network hiccup surfaced as an operator-visible
+// "could not reach the activation service" whose whole remedy was running the same call again
+// 24 seconds later. Three attempts, 300/900ms backoff.
+//
+// A TIMEOUT is deliberately NOT in that class for the activation POST: the request may have
+// REACHED the registry and spent the one-use capability with only the response lost, so a
+// blind resend reads back as "spent" and turns a successful activation into a reported
+// failure. The setup GET is idempotent and retries its timeouts too.
+const TRANSIENT_FETCH_BACKOFF_MS = [300, 900];
+
+function fetchFailureCause(error) {
+  const code = error?.cause && typeof error.cause.code === 'string' ? error.cause.code : null;
+  return code ?? (typeof error?.name === 'string' && error.name ? error.name : 'fetch_failed');
+}
+
+function isFetchTimeout(error) {
+  return error?.name === 'TimeoutError' || error?.name === 'AbortError';
+}
+
+async function fetchWithTransientRetry(doFetch, { retryTimeouts }) {
+  let lastError = null;
+  let attempts = 0;
+  for (let attempt = 1; attempt <= TRANSIENT_FETCH_BACKOFF_MS.length + 1; attempt += 1) {
+    attempts = attempt;
+    try {
+      return { response: await doFetch(), attempts };
+    } catch (error) {
+      lastError = error;
+      if (isFetchTimeout(error) && !retryTimeouts) break;
+      const backoff = TRANSIENT_FETCH_BACKOFF_MS[attempt - 1];
+      if (backoff === undefined) break;
+      await new Promise((resolve) => { setTimeout(resolve, backoff); });
+    }
+  }
+  return { error: lastError, attempts, timedOut: isFetchTimeout(lastError) };
+}
+
 function activationRetryable(status, code) {
   if (status === 400 || status === 502 || status === 503) return true;
   if (status === 500 && code === 'REGISTRY_E_UNAVAILABLE') return true;
@@ -288,21 +330,23 @@ function parseJsonObject(text) {
 async function localActivate(setupUrl) {
   const config = activationConfigFromEnv();
   const setup = parseSetupUrl(setupUrl, config);
-  let setupResponse;
-  try {
-    setupResponse = await fetch(setup.url, {
+  const setupFetch = await fetchWithTransientRetry(
+    () => fetch(setup.url, {
       method: 'GET',
       redirect: 'error',
       headers: { accept: 'text/markdown' },
       signal: AbortSignal.timeout(ACTIVATION_TIMEOUT_MS),
-    });
-  } catch {
+    }),
+    { retryTimeouts: true },
+  );
+  if (!setupFetch.response) {
     throw new DomainError(
       'SETUP_UNREACHABLE',
-      'The native host could not reach the setup service; the one-use link was not spent.',
+      `The native host could not reach the setup service (${fetchFailureCause(setupFetch.error)}, ${setupFetch.attempts} attempts); the one-use link was not spent.`,
       { retryable: true, link_spent: false },
     );
   }
+  const setupResponse = setupFetch.response;
   if (setupResponse.status !== 200) {
     throw new DomainError(
       setupResponse.status === 404 ? 'SETUP_NOT_FOUND' : 'SETUP_UNAVAILABLE',
@@ -313,9 +357,8 @@ async function localActivate(setupUrl) {
   const setupDocument = await boundedResponseText(setupResponse);
   const contract = parseSetupDocument(setupDocument, setup.capability, config);
 
-  let activationResponse;
-  try {
-    activationResponse = await fetch(contract.activationUrl, {
+  const activationFetch = await fetchWithTransientRetry(
+    () => fetch(contract.activationUrl, {
       method: 'POST',
       redirect: 'error',
       headers: {
@@ -323,14 +366,27 @@ async function localActivate(setupUrl) {
         'x-enrollment-capability': setup.capability,
       },
       signal: AbortSignal.timeout(ACTIVATION_TIMEOUT_MS),
-    });
-  } catch {
+    }),
+    { retryTimeouts: false },
+  );
+  if (!activationFetch.response) {
+    if (activationFetch.timedOut) {
+      // The one branch where "not spent" would be a guess: the request may have landed with
+      // only the response lost. Say so, and route the operator through a state CHECK instead
+      // of a blind resend of a one-use capability.
+      throw new DomainError(
+        'ACTIVATION_TIMEOUT',
+        `The activation service did not answer within ${ACTIVATION_TIMEOUT_MS}ms; the request may have reached it, so the one-use link MAY be spent. Check local_doctor / the registry state before re-activating.`,
+        { retryable: false, link_spent: null },
+      );
+    }
     throw new DomainError(
       'ACTIVATION_UNREACHABLE',
-      'The native host could not reach the activation service; the one-use link was not spent.',
+      `The native host could not reach the activation service (${fetchFailureCause(activationFetch.error)}, ${activationFetch.attempts} attempts); the one-use link was not spent.`,
       { retryable: true, link_spent: false },
     );
   }
+  const activationResponse = activationFetch.response;
 
   const responseBody = await boundedResponseText(activationResponse);
   const payload = parseJsonObject(responseBody);

@@ -129,6 +129,36 @@ test("connect skill routes one-use activation through the native local companion
   assert.match(skill, /Never use workspace shell, `curl`, Web Fetch, or browser automation for activation/);
 });
 
+test("remote authorization goes through the host plugin UI, never a pasted authorization URL", async () => {
+  // MEOW-20, 2026-08-11: the agent called the harness-injected `authenticate` tool and relayed
+  // its URL into chat; the owner authorized through /plugin instead, which minted its OWN DCR
+  // client and callback port — the pasted URL's PKCE challenge was already dead. The skills must
+  // name the UI path as THE action and ban both the tool call and the URL relay, in boot (where
+  // an unauthorized bios_load surfaces) and in connect (whose REMOTE-AUTH owns the recovery).
+  const connect = await readPackageFile("skills", "connect", "SKILL.md");
+  const boot = await readPackageFile("skills", "boot", "SKILL.md");
+
+  for (const [name, skill] of [["connect", connect], ["boot", boot]]) {
+    assert.match(skill, /\/plugin/, `${name} names the /plugin UI`);
+    assert.match(skill, /Authenticate/, `${name} names the Authenticate action`);
+    assert.match(skill, /plugin browser/i, `${name} covers the Claude Desktop surface`);
+    assert.match(skill, /`authenticate` tool/, `${name} names the harness tool it bans`);
+    assert.match(
+      skill,
+      /[Nn]ever (?:call|relay|print)[^.\n]*(?:`authenticate` tool|authorization URL)/,
+      `${name} bans the authenticate tool / URL relay`,
+    );
+    assert.match(skill, /challenge that cannot complete/, `${name} states WHY the pasted URL is dead`);
+  }
+
+  // The UI path is primary: the no-TTY pty recipe must be scoped to surfaces with no plugin UI,
+  // not offered as the default.
+  assert.match(connect, /Only when no plugin UI exists/);
+  // Mid-session authorization never surfaces the remote tools — the restart step must survive.
+  assert.match(connect, /start a fresh session and run the `boot` skill/);
+  assert.match(boot, /mid-session authorization never surfaces the remote tools/);
+});
+
 test("every Codex skill prompt names its skill", async () => {
   for (const skill of ["boot", "connect", "doctor", "install"]) {
     const metadata = await readPackageFile("skills", skill, "agents", "openai.yaml");
