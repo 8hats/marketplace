@@ -10,7 +10,6 @@
   "files": [
     ".claude-plugin/",
     ".codex-plugin/",
-    ".mcp.claude.json",
     ".mcp.json",
     "catalog/",
     "dist/",
