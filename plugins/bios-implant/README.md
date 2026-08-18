@@ -1,7 +1,7 @@
 # BIOS Implant
 
 > **Where this comes from.** The live home of this plugin is the public
-> marketplace [`8hats/plugins`](https://github.com/8hats/plugins). Installing
+> marketplace [`8hats/marketplace`](https://github.com/8hats/marketplace). Installing
 > from that marketplace serves exactly this tree, and a release is a version
 > bump plus a push — no package registry sits in the path.
 
@@ -35,7 +35,7 @@ What it does not include:
 **Claude Code** — the verified path:
 
 ```text
-/plugin marketplace add 8hats/plugins
+/plugin marketplace add 8hats/marketplace
 /plugin install bios-implant@8hats
 ```
 
@@ -48,12 +48,12 @@ version this repository now carries:
 /plugin update bios-implant@8hats
 ```
 
-Non-interactive equivalents: `claude plugin marketplace add 8hats/plugins`,
+Non-interactive equivalents: `claude plugin marketplace add 8hats/marketplace`,
 `claude plugin install bios-implant@8hats`. Uninstall with
 `claude plugin uninstall bios-implant@8hats`.
 
 **Claude Desktop / Local Cowork** — the desktop app's plugin browser takes
-the same marketplace source (`8hats/plugins`). This path is prepared, not yet
+the same marketplace source (`8hats/marketplace`). This path is prepared, not yet
 proven end to end. Fully quit and reopen Claude Desktop after a first install
 or update so the UI starts from the reconciled plugin state.
 

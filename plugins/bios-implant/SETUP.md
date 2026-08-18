@@ -11,8 +11,8 @@ Ask the user only for visible native permissions, a missing Node prerequisite, n
 
 ## 2. Install or repair when needed
 
-1. BIOS Implant installs only from the public marketplace `8hats/plugins` (https://github.com/8hats/plugins). Never install through a package registry: the former npm channel is retired and frozen at an old version.
-2. If the plugin is not loaded yet, the session predates installation, or the local payload is broken, install or reinstall it through the host's native plugin mechanism: in Claude Desktop, the plugin browser with the marketplace source `8hats/plugins`; in Claude Code, `/plugin marketplace add 8hats/plugins` then `/plugin install bios-implant@8hats`. Ask the user to perform the native app steps you cannot drive yourself.
+1. BIOS Implant installs only from the public marketplace `8hats/marketplace` (https://github.com/8hats/marketplace). Never install through a package registry: the former npm channel is retired and frozen at an old version.
+2. If the plugin is not loaded yet, the session predates installation, or the local payload is broken, install or reinstall it through the host's native plugin mechanism: in Claude Desktop, the plugin browser with the marketplace source `8hats/marketplace`; in Claude Code, `/plugin marketplace add 8hats/marketplace` then `/plugin install bios-implant@8hats`. Ask the user to perform the native app steps you cannot drive yourself.
 3. A machine that still carries the retired npx-era install (`bios-implant@agent-university`) must remove it first (`claude plugin uninstall bios-implant@agent-university`): running both copies means duplicate skills and duplicate MCP servers.
 
 ## 3. Confirm the loaded plugin in a fresh session

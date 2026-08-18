@@ -60,7 +60,7 @@ Current standing:
 ## Claude Code — works today
 
 ```text
-/plugin marketplace add 8hats/plugins
+/plugin marketplace add 8hats/marketplace
 /plugin install bios-implant@8hats
 ```
 
@@ -72,7 +72,7 @@ Non-interactive equivalent, for provisioning a fleet via `settings.json`:
 ```json
 {
   "extraKnownMarketplaces": {
-    "8hats": { "source": { "source": "github", "repo": "8hats/plugins" } }
+    "8hats": { "source": { "source": "github", "repo": "8hats/marketplace" } }
   },
   "enabledPlugins": { "bios-implant@8hats": true }
 }
@@ -81,7 +81,7 @@ Non-interactive equivalent, for provisioning a fleet via `settings.json`:
 ## Claude Desktop / Local Cowork — prepared
 
 The desktop app has a plugin browser that accepts a marketplace source; point
-it at `8hats/plugins` and install bios-implant from there — it serves the
+it at `8hats/marketplace` and install bios-implant from there — it serves the
 version this repository carries. Nobody has yet driven a Local Cowork session
 end to end that way, so treat the path as prepared rather than proven. Fully
 quit and reopen Claude Desktop after a first install or update.
@@ -228,7 +228,7 @@ companion ships inside this repository; clone it and point the host at the
 built entrypoint:
 
 ```sh
-git clone https://github.com/8hats/plugins
+git clone https://github.com/8hats/marketplace
 ```
 
 ```json

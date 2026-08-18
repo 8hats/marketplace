@@ -35,7 +35,7 @@ Node ≥ 20 must be on `PATH`; the local companion runs under it.
 ## Install — Claude Code
 
 ```text
-/plugin marketplace add 8hats/plugins
+/plugin marketplace add 8hats/marketplace
 /plugin install bios-implant@8hats
 ```
 
@@ -58,7 +58,7 @@ the second moves you onto the version this repository now carries:
 /plugin update bios-implant@8hats
 ```
 
-Non-interactive equivalents: `claude plugin marketplace add 8hats/plugins`,
+Non-interactive equivalents: `claude plugin marketplace add 8hats/marketplace`,
 `claude plugin install bios-implant@8hats`.
 
 Two caveats, both learned by hitting them:
@@ -89,7 +89,7 @@ one is actually proven. In short:
 
 - **Claude Code** — the path above; verified end to end.
 - **Claude Desktop** — the desktop app has a plugin browser that takes the same
-  marketplace source (`8hats/plugins`); we have not yet driven a Local Cowork
+  marketplace source (`8hats/marketplace`); we have not yet driven a Local Cowork
   session through it, so treat that path as prepared rather than proven.
 - **Codex** — no marketplace mechanism; configure the remote MCP by hand per
   `docs/multi-host.md`. Codex has no hook runner, so run the `boot` skill

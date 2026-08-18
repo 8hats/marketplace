@@ -1,14 +1,14 @@
 # Installation reference
 
 BIOS Implant installs from the public marketplace
-[`8hats/plugins`](https://github.com/8hats/plugins). No package registry sits
+[`8hats/marketplace`](https://github.com/8hats/marketplace). No package registry sits
 in the path: the marketplace serves this tree directly. Node ≥ 20 must be on
 `PATH` — the local companion MCP runs under it.
 
 ## Claude Code — verified
 
 ```text
-/plugin marketplace add 8hats/plugins
+/plugin marketplace add 8hats/marketplace
 /plugin install bios-implant@8hats
 ```
 
@@ -22,7 +22,7 @@ Non-interactive provisioning via `settings.json`:
 ```json
 {
   "extraKnownMarketplaces": {
-    "8hats": { "source": { "source": "github", "repo": "8hats/plugins" } }
+    "8hats": { "source": { "source": "github", "repo": "8hats/marketplace" } }
   },
   "enabledPlugins": { "bios-implant@8hats": true }
 }
@@ -31,7 +31,7 @@ Non-interactive provisioning via `settings.json`:
 ## Claude Desktop / Local Cowork — prepared
 
 Install through the desktop app's plugin browser using the same marketplace
-source, `8hats/plugins`. Fully quit and reopen Claude Desktop after a first
+source, `8hats/marketplace`. Fully quit and reopen Claude Desktop after a first
 install or update so the UI starts from the reconciled plugin state. Nobody
 has yet driven a Local Cowork session end to end through this path, so treat
 it as prepared rather than proven.

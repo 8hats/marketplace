@@ -1,6 +1,6 @@
 ---
 name: install
-description: Install, update, or repair Agent University BIOS Implant from the public 8hats/plugins marketplace and verify the result in a fresh session. Use when the user asks to install or update BIOS Implant, or says BIOS is missing or broken.
+description: Install, update, or repair Agent University BIOS Implant from the public 8hats/marketplace marketplace and verify the result in a fresh session. Use when the user asks to install or update BIOS Implant, or says BIOS is missing or broken.
 ---
 
 # Install BIOS Implant
@@ -13,7 +13,7 @@ workspace folder, or an owner-provided one-use setup URL.
 ## Boundaries
 
 - The only distribution channel is the public marketplace
-  [`8hats/plugins`](https://github.com/8hats/plugins). Never install through
+  [`8hats/marketplace`](https://github.com/8hats/marketplace). Never install through
   npm or npx: the former npm package is retired and frozen at an old version.
 - Do not require Git, a repository checkout, a global install, Python, or a
   background daemon.
@@ -31,14 +31,14 @@ blocker and ask permission to install or update it, then resume.
 
 ### 2. Install or update by host
 
-- **Claude Code**: run `claude plugin marketplace add 8hats/plugins`, then
+- **Claude Code**: run `claude plugin marketplace add 8hats/marketplace`, then
   `claude plugin install bios-implant@8hats` (slash equivalents:
-  `/plugin marketplace add 8hats/plugins`, `/plugin install
+  `/plugin marketplace add 8hats/marketplace`, `/plugin install
   bios-implant@8hats`). To update an existing install, run
   `claude plugin marketplace update 8hats`, then
   `claude plugin update bios-implant@8hats` — both commands are required.
 - **Claude Desktop / Local Cowork**: the desktop plugin browser takes the
-  same marketplace source, `8hats/plugins`. Walk the user through it; this
+  same marketplace source, `8hats/marketplace`. Walk the user through it; this
   path is prepared rather than proven, so verify the result in a fresh
   session afterwards. Never use Settings → Connectors → Add custom
   connector — it registers the remote server without the skills, the hooks,
