@@ -196,6 +196,7 @@ test("host doctor performs a real Local Companion initialize and tools handshake
     "local_activate",
     "local_connect",
     "local_doctor",
+    "local_hello",
     "local_selection",
     "local_stage",
     "local_status"

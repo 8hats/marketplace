@@ -2,6 +2,24 @@
 
 All notable changes to BIOS Implant are documented in this file.
 
+## 1.0.21 - 2026-08-20
+
+- New local tool **`local_hello`** and a matching **`hello`** skill: the "hey implant"
+  liveness challenge. Someone asks whether the implant is on, the agent calls the tool, and
+  the answer is one sentence — a greeting plus the live evidence behind it: companion
+  version, bound agent and label, folder, staged BIOS version. Asked for by Dima, who wanted
+  a visible check that does not mean reading a log
+- The greeting string lives **only inside the companion process** — deliberately not in
+  `SKILL.md`, not in the README. A model that has merely read the plugin cannot produce it;
+  saying it at all requires a live stdio handshake with a running companion. The skill's one
+  rule is that it must never compose the greeting itself, and must answer "implant NOT
+  active" when the tool cannot be reached
+- `local_hello` is read-only and never fails on an unbound folder: reachability is the claim
+  being made, so it answers "no folder bound yet" and names `connect` as the next step rather
+  than erroring
+- `EXPECTED_LOCAL_TOOLS` in the host doctor grew the new tool, so the Local Companion
+  handshake check keeps covering the full advertised surface
+
 ## 1.0.20 - 2026-08-11
 
 Everything here traces to the MEOW-20 onboarding transcript (2026-08-11).

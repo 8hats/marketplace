@@ -44,6 +44,7 @@ const EXPECTED_LOCAL_TOOLS = Object.freeze([
   "local_doctor",
   "local_selection",
   "local_stage",
+  "local_hello",
   "local_status"
 ]);
 const EXPECTED_MARKETPLACE_SOURCE = Object.freeze({

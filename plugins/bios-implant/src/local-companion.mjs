@@ -25,6 +25,11 @@ const PROTOCOL_VERSION = LOCAL_MCP_PROTOCOL_VERSION ?? '2024-11-05';
 const SERVER_NAME = LOCAL_MCP_SERVER_NAME ?? 'implant-local';
 const SERVER_VERSION = LOCAL_MCP_SERVER_VERSION ?? '1.0.15';
 const DEFAULT_BINDING_LABEL = DEFAULT_LABEL ?? 'default';
+// The liveness challenge Dima asked for: he says "hey implant", the agent answers this.
+// It lives HERE, in the companion process, and nowhere in the skill text — so the sentence
+// cannot be produced by a model that merely read the plugin. Saying it proves a live
+// stdio handshake with this process; the evidence appended to it proves the binding too.
+const GREETING = "Hey there! I'm a hat, an implant on a head.";
 export const DEFAULT_CLIENT_REQUEST_TIMEOUT_MS = 5_000;
 const DEFAULT_SETUP_ORIGIN = 'https://app.agents.university';
 const DEFAULT_REGISTRY_ORIGIN = 'https://registry.agents.university';
@@ -132,6 +137,18 @@ const TOOL_DEFINITIONS = [
   {
     name: 'local_doctor',
     description: 'Report local store safety, folder binding, staged BIOS availability, and warnings.',
+    annotations: READ_ONLY_ANNOTATIONS,
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        folder: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'local_hello',
+    description: 'Answer the "hey implant" liveness challenge with the greeting plus the live local state that proves this companion is running.',
     annotations: READ_ONLY_ANNOTATIONS,
     inputSchema: {
       type: 'object',
@@ -449,6 +466,65 @@ function renderStatus(status) {
   return `Staged ${status.agent_id}/${status.label} at version ${status.bios_version}.`;
 }
 
+async function buildHello({ folder, roots }) {
+  // Reachability is the claim; binding and staging are extra credit. A missing binding must
+  // narrow the answer, never fail it — "not bound yet" is still proof the implant answered.
+  let selection = null;
+  try {
+    selection = await localSelection({ folder, roots });
+  } catch {
+    selection = null;
+  }
+  const bound = Boolean(selection?.bound);
+
+  let status = null;
+  if (bound) {
+    try {
+      status = await localStatus({
+        agentId: selection.agent_id,
+        label: selection.label,
+        folder,
+        roots,
+      });
+    } catch {
+      status = null;
+    }
+  }
+  const staged = Boolean(status?.staged);
+
+  return {
+    greeting: GREETING,
+    alive: true,
+    companion: { name: SERVER_NAME, version: SERVER_VERSION },
+    bound,
+    ...(bound
+      ? {
+        workspace_root: selection.workspace_root,
+        agent_id: selection.agent_id,
+        label: selection.label,
+      }
+      : {}),
+    staged,
+    ...(staged ? { bios_version: status.bios_version } : {}),
+    next_action: bound
+      ? (staged ? null : 'Run the BIOS Implant `boot` skill to load and stage the BIOS for this folder.')
+      : 'Run the BIOS Implant `connect` skill for this exact folder.',
+  };
+}
+
+function renderHello(hello) {
+  const evidence = [`${hello.companion.name} ${hello.companion.version}`];
+  if (hello.bound) {
+    evidence.push(`${hello.agent_id}/${hello.label}`);
+    evidence.push(hello.workspace_root);
+    evidence.push(hello.staged ? `BIOS v${hello.bios_version}` : 'BIOS not staged yet');
+  } else {
+    evidence.push('no folder bound yet');
+  }
+  const suffix = hello.next_action ? ` Next: ${hello.next_action}` : '';
+  return `${hello.greeting} — ${evidence.join(' · ')}.${suffix}`;
+}
+
 function renderDoctor(doctor) {
   const warningSuffix = doctor.warnings.length > 0 ? ` Warnings: ${doctor.warnings.join(', ')}.` : '';
   const errorSuffix = doctor.errors.length > 0 ? ` Errors: ${doctor.errors.join(', ')}.` : '';
@@ -547,6 +623,13 @@ async function executeTool(session, name, args) {
         roots: await session.getRoots(),
       });
       return createTextResult(renderDoctor(result), result, !result.healthy);
+    }
+    case 'local_hello': {
+      const result = await buildHello({
+        folder: args.folder,
+        roots: await session.getRoots(),
+      });
+      return createTextResult(renderHello(result), result);
     }
     default:
       throw new DomainError('UNKNOWN_TOOL', `unknown tool ${name}`, { tool: name });
