@@ -32,10 +32,11 @@ answer is that the implant is **not** active.
 2. Call it. Pass no arguments; the companion resolves the current folder itself.
 
 `ANSWER`
-1. Print the tool's text result **verbatim, as the first line of your reply**. It carries the
-   greeting plus the live evidence: companion version, bound agent and label, folder, BIOS
-   version.
+1. Print the tool's text result **as the first line of your reply**, verbatim by default.
 2. Add nothing before it. One short line after it is fine if the tool named a `next_action`.
+3. If you restate it instead of copying it, **every fact must survive**: the companion version,
+   whether the folder is bound, and — when it is — the agent, the label, the folder and the
+   staged BIOS version. Dropping one turns a proof into a pleasantry.
 
 `FAIL`
 1. If no `local_hello` tool exists: the plugin is not loaded in this session. Say exactly that,
@@ -47,7 +48,10 @@ answer is that the implant is **not** active.
 ## Completion Gate
 
 Complete only when the reply contains either:
-- the tool's own text, unedited, as the first line; or
+- the tool's answer as the first line — copied, or restated with **every** field intact
+  (companion version, binding state, and when bound the agent, label, folder and BIOS
+  version); or
 - an explicit "implant NOT active", the reason, and one next action.
 
-Never both. Never a greeting the tool did not return.
+Never both. Never a greeting the tool did not return, and never a greeting stripped of the
+evidence that came with it — the evidence is the only part that cannot be faked.
