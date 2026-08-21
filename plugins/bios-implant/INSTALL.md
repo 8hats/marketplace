@@ -36,9 +36,18 @@ Non-interactive provisioning via `settings.json`:
 
 Install through the desktop app's plugin browser using the same marketplace
 source, `8hats/marketplace`. Fully quit and reopen Claude Desktop after a first
-install or update so the UI starts from the reconciled plugin state. Nobody
-has yet driven a Local Cowork session end to end through this path, so treat
-it as prepared rather than proven.
+install or update so the UI starts from the reconciled plugin state.
+
+**Expect a consent modal on install.** Claude Desktop raises *"This plugin
+includes local MCP servers"* with a red banner — *"Installing will grant access
+to everything available to Cowork"* — naming `implant-local`. This is normal:
+the local companion is a local process, which is the whole point of it. The
+buttons are **Disable plugin** and **Continue**; the safe-sounding one aborts
+the install. Choose **Continue**.
+
+The marketplace sync itself is proven on a tree carrying the current fix
+(Windows, 2026-08-21). A Local Cowork session has not yet been driven end to
+end after that, so treat the session behaviour as prepared rather than proven.
 
 Do **not** use Settings → Connectors → *Add custom connector* for Local
 Cowork: that registers the remote server alone, without the skills, the

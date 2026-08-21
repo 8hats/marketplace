@@ -54,7 +54,13 @@ STEP 2 — INSTALL. Take exactly one branch.
         1. Settings, then the plugin browser (Extensions).
         2. Add a marketplace with the source:  8hats/marketplace
         3. Install "bios-implant" from that marketplace.
-        4. Quit Claude Desktop completely — the whole application, not just the window —
+        4. A modal appears: "This plugin includes local MCP servers", with a red banner
+           reading "Installing will grant access to everything available to Cowork", and
+           it names implant-local. Warn them BEFORE they click install that this is
+           coming, or it reads as something going wrong. The two buttons are
+           "Disable plugin" and "Continue" — the one that sounds safe is the one that
+           aborts the install. They want Continue.
+        5. Quit Claude Desktop completely — the whole application, not just the window —
            and open it again.
       Tell them NOT to use Settings > Connectors > "Add custom connector". That
       registers the remote server on its own, without the skills, the hook, or the local
@@ -113,7 +119,7 @@ STEP 4 — BIND THE FOLDER.
 | Branch | State | What was actually done |
 |---|---|---|
 | **(A) Claude Code** | **verified** | The commands were run verbatim, non-interactively, in an isolated `CLAUDE_CONFIG_DIR` sandbox on CC 2.1.228 — twice. Once against `8hats/marketplace` on GitHub as a person would type it: marketplace added, `bios-implant@8hats` 1.0.20 installed and enabled, `plugin details` listing 4 skills + 1 SessionStart hook, `claude mcp list` showing `implant-local` connected over stdio and `implant` reaching its auth challenge. Once against this branch's tree, where the inventory is 5 skills (`hello` included). Not exercised: the `agent-university` uninstall line — no machine here carries that retired install. |
-| **(B) Claude Desktop** | **prepared** | The click path is the documented one and matches `INSTALL.md`; nobody has driven it end to end from this repository. The marketplace-sync fix it depends on is [#1](https://github.com/8hats/marketplace/pull/1), still open. |
+| **(B) Claude Desktop** | **partly verified** | Driven on Windows, 2026-08-21, against a scratch repo carrying #1 through #4 (Desktop's *add marketplace* takes `owner/repo` with no ref, so an unmerged branch cannot be tested any other way). **The marketplace synced and listed the plugin** — the step that fails on `8hats/marketplace` main today. The install consent modal in step 4 was found during that run and was previously undocumented. Not yet confirmed: the plugin loading after restart. Full log: `projects/desktop-install-walkthrough/` in the agent repo. |
 | **(C) Qwen Code** | **prepared** | The config shape is from Qwen Code's own documentation (`~/.qwen/settings.json`, `mcpServers`, `httpUrl` for streamable HTTP, `command`/`args` for stdio). Not executed: nobody has run `qwen` against this tree. Remote OAuth on Qwen is the open question — the IdP has Dynamic Client Registration live, but no round-trip has been completed from a Gemini-CLI-family host. Until one is, expect the **local** companion to work and the **remote** `implant` server to need attention. |
 
 ## Why the prompt is shaped this way
