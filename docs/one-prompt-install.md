@@ -103,6 +103,10 @@ STEP 3 — PROVE IT, in a fresh session.
         - greeting with NO evidence line   -> nothing is running and something just
                                               repeated the phrase back at you. Not a pass.
         - no answer at all                 -> run the `doctor` skill and follow it.
+      The strongest evidence is not the sentence. Most hosts print their own line above the
+      answer naming what ran - in Claude Desktop, "Used a skill, used
+      bios-implant:implant-local integration". The host writes that, not the model, so it is
+      the one part that cannot be composed. Look for it.
 
 STEP 4 — BIND THE FOLDER.
       Installation does not bind anything. Binding needs a one-use setup URL that only
