@@ -45,7 +45,7 @@ STEP 2 — INSTALL. Take exactly one branch.
         claude plugin uninstall bios-implant@agent-university     # only if listed
       Confirm what landed:
         claude plugin details bios-implant
-      You should see skills (boot, connect, doctor, hello, install), one SessionStart
+      You should see skills (boot, connect, doctor, hey-implant, install), one SessionStart
       hook, and the MCP servers. Then tell the person to restart the session: plugins
       load at session start, so nothing you just installed exists in this one.
 
