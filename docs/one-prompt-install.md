@@ -45,7 +45,7 @@ STEP 2 — INSTALL. Take exactly one branch.
         claude plugin uninstall bios-implant@agent-university     # only if listed
       Confirm what landed:
         claude plugin details bios-implant
-      You should see skills (boot, connect, doctor, hey-implant, install), one SessionStart
+      You should see skills (8hats-implant-boot, -connect, -doctor, -hey, -install), one SessionStart
       hook, and the MCP servers. Then tell the person to restart the session: plugins
       load at session start, so nothing you just installed exists in this one.
 
@@ -102,7 +102,7 @@ STEP 3 — PROVE IT, in a fresh session.
         - greeting WITH an evidence line   -> the implant is running.
         - greeting with NO evidence line   -> nothing is running and something just
                                               repeated the phrase back at you. Not a pass.
-        - no answer at all                 -> run the `doctor` skill and follow it.
+        - no answer at all                 -> run the `8hats-implant-doctor` skill and follow it.
       The strongest evidence is not the sentence. Most hosts print their own line above the
       answer naming what ran - in Claude Desktop, "Used a skill, used
       bios-implant:implant-local integration". The host writes that, not the model, so it is
@@ -111,7 +111,7 @@ STEP 3 — PROVE IT, in a fresh session.
 STEP 4 — BIND THE FOLDER.
       Installation does not bind anything. Binding needs a one-use setup URL that only
       the agent's owner can issue. Ask them for it, change to the exact folder that
-      should be bound, and give the URL only to the `connect` skill from that folder —
+      should be bound, and give the URL only to the `8hats-implant-connect` skill from that folder —
       never to a shell command, an installer, a log, or ordinary chat. Then run `doctor`
       again, then `boot`.
 ````
@@ -122,7 +122,7 @@ STEP 4 — BIND THE FOLDER.
 
 | Branch | State | What was actually done |
 |---|---|---|
-| **(A) Claude Code** | **verified** | The commands were run verbatim, non-interactively, in an isolated `CLAUDE_CONFIG_DIR` sandbox on CC 2.1.228 — twice. Once against `8hats/marketplace` on GitHub as a person would type it: marketplace added, `bios-implant@8hats` 1.0.20 installed and enabled, `plugin details` listing 4 skills + 1 SessionStart hook, `claude mcp list` showing `implant-local` connected over stdio and `implant` reaching its auth challenge. Once against this branch's tree, where the inventory is 5 skills (`hey-implant` included). **Correction 2026-08-22:** an earlier version of this row said the `agent-university` uninstall line was unexercised because "no machine here carries that retired install". That was wrong — `bios-implant@agent-university` 1.0.14 is enabled on this very machine, and it is one half of a live skill-name collision with `8hats-bridge` (both ship a skill named `doctor`). The uninstall line is still unexercised, but the reason was false. |
+| **(A) Claude Code** | **verified** | The commands were run verbatim, non-interactively, in an isolated `CLAUDE_CONFIG_DIR` sandbox on CC 2.1.228 — twice. Once against `8hats/marketplace` on GitHub as a person would type it: marketplace added, `bios-implant@8hats` 1.0.20 installed and enabled, `plugin details` listing 4 skills + 1 SessionStart hook, `claude mcp list` showing `implant-local` connected over stdio and `implant` reaching its auth challenge. Once against this branch's tree, where the inventory is 5 skills, all under the `8hats-implant-` prefix. **Correction 2026-08-22:** an earlier version of this row said the `agent-university` uninstall line was unexercised because "no machine here carries that retired install". That was wrong — `bios-implant@agent-university` 1.0.14 is enabled on this very machine, and it is one half of a live skill-name collision with `8hats-bridge` (both ship a skill named `doctor`). The uninstall line is still unexercised, but the reason was false. |
 | **(B) Claude Desktop** | **partly verified** | Driven on Windows, 2026-08-21, against a scratch repo carrying #1 through #4 (Desktop's *add marketplace* takes `owner/repo` with no ref, so an unmerged branch cannot be tested any other way). **The marketplace synced and listed the plugin** — the step that fails on `8hats/marketplace` main today. The install consent modal in step 4 was found during that run and was previously undocumented. Not yet confirmed: the plugin loading after restart. Full log: `projects/desktop-install-walkthrough/` in the agent repo. |
 | **(C) Qwen Code** | **prepared** | The config shape is from Qwen Code's own documentation (`~/.qwen/settings.json`, `mcpServers`, `httpUrl` for streamable HTTP, `command`/`args` for stdio). Not executed: nobody has run `qwen` against this tree. Remote OAuth on Qwen is the open question — the IdP has Dynamic Client Registration live, but no round-trip has been completed from a Gemini-CLI-family host. Until one is, expect the **local** companion to work and the **remote** `implant` server to need attention. |
 
