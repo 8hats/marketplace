@@ -507,8 +507,8 @@ async function buildHello({ folder, roots }) {
     staged,
     ...(staged ? { bios_version: status.bios_version } : {}),
     next_action: bound
-      ? (staged ? null : 'Run the BIOS Implant `boot` skill to load and stage the BIOS for this folder.')
-      : 'Run the BIOS Implant `connect` skill for this exact folder.',
+      ? (staged ? null : 'Run the BIOS Implant `8hats-implant-boot` skill to load and stage the BIOS for this folder.')
+      : 'Run the BIOS Implant `8hats-implant-connect` skill for this exact folder.',
   };
 }
 

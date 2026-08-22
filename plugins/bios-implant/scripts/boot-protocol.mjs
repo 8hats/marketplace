@@ -10,7 +10,7 @@ export const EXIT_MALFORMED = 1;
 export const EXIT_OVERSIZED = 2;
 
 export const DEFAULT_ADDITIONAL_CONTEXT =
-  "Run the BIOS Implant `boot` skill/protocol before substantive work: call `local_selection` for the exact current folder; if unbound, stop and run `connect`; if bound, call `bios_load` for that agent, then `local_stage` with the returned BIOS body/version/etag metadata, then `wm_load`. On BIOS auth or network failure, consult `local_status` and use local fallback only if it returns a valid last-good BIOS body or context. Finish by reporting `LOADED`, `PARTIAL`, or `UNAVAILABLE`.";
+  "Run the BIOS Implant `8hats-implant-boot` skill/protocol before substantive work: call `local_selection` for the exact current folder; if unbound, stop and run `8hats-implant-connect`; if bound, call `bios_load` for that agent, then `local_stage` with the returned BIOS body/version/etag metadata, then `wm_load`. On BIOS auth or network failure, consult `local_status` and use local fallback only if it returns a valid last-good BIOS body or context. Finish by reporting `LOADED`, `PARTIAL`, or `UNAVAILABLE`.";
 
 export function buildAdditionalContext() {
   return DEFAULT_ADDITIONAL_CONTEXT;

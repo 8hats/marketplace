@@ -126,10 +126,10 @@ async function createDoctorFixture({ withBinding = true } = {}) {
   const textArtifacts = [
     path.join(packageRoot, "dist", "local-mcp.mjs"),
     path.join(packageRoot, "SETUP.md"),
-    path.join(packageRoot, "skills", "install", "SKILL.md"),
-    path.join(packageRoot, "skills", "connect", "SKILL.md"),
-    path.join(packageRoot, "skills", "boot", "SKILL.md"),
-    path.join(packageRoot, "skills", "doctor", "SKILL.md"),
+    path.join(packageRoot, "skills", "8hats-implant-install", "SKILL.md"),
+    path.join(packageRoot, "skills", "8hats-implant-connect", "SKILL.md"),
+    path.join(packageRoot, "skills", "8hats-implant-boot", "SKILL.md"),
+    path.join(packageRoot, "skills", "8hats-implant-doctor", "SKILL.md"),
     path.join(packageRoot, "hooks", "claude.json"),
     path.join(packageRoot, "hooks", "codex.json"),
     path.join(packageRoot, "scripts", "boot-protocol.mjs")
@@ -313,7 +313,7 @@ test("instructions prefers the install skill, falls back to INSTALL.md, and rema
   const packageRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "bios-implant-instructions-"));
   const homeDirectory = await fsp.mkdtemp(path.join(os.tmpdir(), "bios-implant-home-"));
   const installPath = path.join(packageRoot, "INSTALL.md");
-  const installSkillPath = path.join(packageRoot, "skills", "install", "SKILL.md");
+  const installSkillPath = path.join(packageRoot, "skills", "8hats-implant-install", "SKILL.md");
   await fsp.mkdir(path.dirname(installSkillPath), { recursive: true });
   await fsp.writeFile(
     installSkillPath,

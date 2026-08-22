@@ -4,7 +4,7 @@ All notable changes to BIOS Implant are documented in this file.
 
 ## 1.0.21 - 2026-08-20
 
-- New local tool **`local_hello`** and a matching **`hey-implant`** skill: the "hey implant"
+- New local tool **`local_hello`** and a matching **`8hats-implant-hey`** skill: the "hey implant"
   liveness challenge. Someone asks whether the implant is on, the agent calls the tool, and
   the answer is one sentence — a greeting plus the live evidence behind it: companion
   version, bound agent and label, folder, staged BIOS version. Asked for by Dima, who wanted
@@ -19,11 +19,21 @@ All notable changes to BIOS Implant are documented in this file.
   than erroring
 - `EXPECTED_LOCAL_TOOLS` in the host doctor grew the new tool, so the Local Companion
   handshake check keeps covering the full advertised surface
-- The skill is named `hey-implant`, not `hello`. Claude Desktop lists plugin skills with no
-  plugin prefix, in one namespace shared with every plugin installed — and this machine already
-  carries a live collision there: `8hats-bridge` and the retired `bios-implant@agent-university`
-  both ship a skill named `doctor`, both enabled. Adding a fifth generic word to that namespace
-  was not worth it. `hey-implant` is the phrase the challenge actually uses
+- **All five skills are prefixed `8hats-implant-`** — `8hats-implant-boot`, `-connect`,
+  `-doctor`, `-hey`, `-install`. Claude Desktop lists plugin skills with no plugin prefix, in
+  one namespace shared with every plugin installed, and this machine already carries a live
+  collision there: `8hats-bridge` and the retired `bios-implant@agent-university` both ship a
+  skill named `doctor`, both enabled. The prefix is verbose and is not meant to be typed —
+  routing comes from `description:`, not the name
+- The renamed skills are referenced from **six machine-read places**, not just their own
+  directories: `scripts/boot-protocol.mjs` (the instruction the SessionStart hook injects into
+  every session — a stale name here sends every agent to a skill that does not exist),
+  `hooks/codex.json` `manualFallbackSkill`, `src/local-companion.mjs` `next_action` strings (the
+  live handoff the model reads to pick its next step), `src/doctor.mjs` skill-presence checks,
+  `src/cli.mjs`, and the contract tests. Prose in README/INSTALL/SETUP moved with them
+- The flattening itself is reported upstream as
+  [anthropics/claude-code#88838](https://github.com/anthropics/claude-code/issues/88838); the
+  prefix is the workaround, not the fix
 - The Codex skill-prompt contract now covers this skill too. It iterated
   `["boot", "connect", "doctor", "install"]` and never checked the new one — added before the
   rename, watched fail on the missing path, then renamed

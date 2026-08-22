@@ -1,5 +1,5 @@
 ---
-name: hey-implant
+name: 8hats-implant-hey
 description: Invoke when the user greets or challenges the implant — "hey implant", "are you awake", "are you there", "is the implant active", "prove you are running" — or asks for a visible sign that BIOS Implant is live in this session.
 allowed-tools: mcp__plugin_bios-implant_implant-local__local_hello
 ---
@@ -42,7 +42,7 @@ answer is that the implant is **not** active.
 1. If no `local_hello` tool exists: the plugin is not loaded in this session. Say exactly that,
    and give one next action — install BIOS Implant, or restart the host so it loads.
 2. If the tool exists but the call errors: the companion is registered but not running. Say
-   that, quote the error, and send the person to the `doctor` skill.
+   that, quote the error, and send the person to the `8hats-implant-doctor` skill.
 3. In both cases state plainly: **implant NOT active** — and do not print a greeting.
 
 ## Completion Gate

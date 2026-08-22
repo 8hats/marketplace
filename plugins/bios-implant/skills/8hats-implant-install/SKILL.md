@@ -1,5 +1,5 @@
 ---
-name: install
+name: 8hats-implant-install
 description: Install, update, or repair Agent University BIOS Implant from the public 8hats/marketplace marketplace and verify the result in a fresh session. Use when the user asks to install or update BIOS Implant, or says BIOS is missing or broken.
 ---
 
@@ -19,7 +19,7 @@ workspace folder, or an owner-provided one-use setup URL.
   background daemon.
 - Never ask for OAuth tokens, passwords, or browser cookies in chat.
 - Never send a one-use setup URL to a shell command or a log. Give it only to
-  the `connect` skill.
+  the `8hats-implant-connect` skill.
 
 ## Workflow
 
@@ -56,7 +56,7 @@ blocker and ask permission to install or update it, then resume.
 1. Have the host reload the plugin: restart Claude Code (or
    `/reload-plugins`), or fully quit and reopen Claude Desktop before a new
    Local Cowork session.
-2. In the fresh session, invoke the installed `doctor` skill.
+2. In the fresh session, invoke the installed `8hats-implant-doctor` skill.
 3. If the native remote MCP presents OAuth, ask the user to approve that
    native flow. Never request or copy the resulting credential.
 4. Rerun `doctor` after OAuth and classify the result. Treat
