@@ -1,10 +1,10 @@
 ---
-name: hello
+name: hey-implant
 description: Invoke when the user greets or challenges the implant — "hey implant", "are you awake", "are you there", "is the implant active", "prove you are running" — or asks for a visible sign that BIOS Implant is live in this session.
 allowed-tools: mcp__plugin_bios-implant_implant-local__local_hello
 ---
 
-# Hello
+# Hey implant
 
 ## State
 

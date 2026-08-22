@@ -160,7 +160,7 @@ test("remote authorization goes through the host plugin UI, never a pasted autho
 });
 
 test("every Codex skill prompt names its skill", async () => {
-  for (const skill of ["boot", "connect", "doctor", "install"]) {
+  for (const skill of ["boot", "connect", "doctor", "hey-implant", "install"]) {
     const metadata = await readPackageFile("skills", skill, "agents", "openai.yaml");
     assert.match(metadata, new RegExp(`default_prompt: ".*\\$${skill}\\b`));
   }

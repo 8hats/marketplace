@@ -1,4 +1,4 @@
 interface:
   display_name: "Hey implant"
   short_description: "Answer the liveness challenge from the running companion"
-  default_prompt: "Use $hello to prove BIOS Implant is active in this session."
+  default_prompt: "Use $hey-implant to prove BIOS Implant is active in this session."

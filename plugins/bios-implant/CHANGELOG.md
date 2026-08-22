@@ -4,7 +4,7 @@ All notable changes to BIOS Implant are documented in this file.
 
 ## 1.0.21 - 2026-08-20
 
-- New local tool **`local_hello`** and a matching **`hello`** skill: the "hey implant"
+- New local tool **`local_hello`** and a matching **`hey-implant`** skill: the "hey implant"
   liveness challenge. Someone asks whether the implant is on, the agent calls the tool, and
   the answer is one sentence — a greeting plus the live evidence behind it: companion
   version, bound agent and label, folder, staged BIOS version. Asked for by Dima, who wanted
@@ -19,6 +19,14 @@ All notable changes to BIOS Implant are documented in this file.
   than erroring
 - `EXPECTED_LOCAL_TOOLS` in the host doctor grew the new tool, so the Local Companion
   handshake check keeps covering the full advertised surface
+- The skill is named `hey-implant`, not `hello`. Claude Desktop lists plugin skills with no
+  plugin prefix, in one namespace shared with every plugin installed — and this machine already
+  carries a live collision there: `8hats-bridge` and the retired `bios-implant@agent-university`
+  both ship a skill named `doctor`, both enabled. Adding a fifth generic word to that namespace
+  was not worth it. `hey-implant` is the phrase the challenge actually uses
+- The Codex skill-prompt contract now covers this skill too. It iterated
+  `["boot", "connect", "doctor", "install"]` and never checked the new one — added before the
+  rename, watched fail on the missing path, then renamed
 
 ## 1.0.20 - 2026-08-11
 
