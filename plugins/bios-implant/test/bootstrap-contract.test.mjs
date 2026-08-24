@@ -17,7 +17,7 @@ test("README exposes an autonomous Local Cowork bootstrap contract", async () =>
   assert.match(readme, /https:\/\/app\.agents\.university\/bios-implant\/SETUP\.md/);
   assert.match(readme, /fetch and follow the public setup document first/i);
   assert.match(readme, /Remote Cowork: not supported/i);
-  assert.match(readme, /\/plugin marketplace add 8hats\/plugins/);
+  assert.match(readme, /\/plugin marketplace add 8hats\/marketplace/);
   assert.match(readme, /\/plugin install bios-implant@8hats/);
   assert.match(readme, /skills\/install\/SKILL\.md/);
   assert.doesNotMatch(readme, /npx -y/);
@@ -29,7 +29,7 @@ test("install skill owns the marketplace install, doctor, and handoff workflow",
 
   assert.match(skill, /^---\nname: install\n/m);
   assert.match(skill, /Local Cowork/);
-  assert.match(skill, /8hats\/plugins/);
+  assert.match(skill, /8hats\/marketplace/);
   assert.match(skill, /claude plugin install bios-implant@8hats/);
   assert.match(skill, /Never install through\s+npm or npx/i);
   assert.match(skill, /AUTH_REQUIRED/);
@@ -45,7 +45,7 @@ test("Cowork receives the native post-install SETUP.md skill", async () => {
   assert.match(setup, /^# BIOS Implant Setup/m);
   assert.match(setup, /Local Cowork/);
   assert.match(setup, /Node is version 20 or newer/);
-  assert.match(setup, /8hats\/plugins/);
+  assert.match(setup, /8hats\/marketplace/);
   assert.match(setup, /plugin browser/i);
   assert.doesNotMatch(setup, /COWORK_CONFIRMATION_REQUIRED/);
   assert.doesNotMatch(setup, /claude:\/\/cowork\/new/);
