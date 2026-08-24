@@ -513,16 +513,21 @@ async function buildHello({ folder, roots }) {
 }
 
 function renderHello(hello) {
-  const evidence = [`${hello.companion.name} ${hello.companion.version}`];
-  if (hello.bound) {
-    evidence.push(`${hello.agent_id}/${hello.label}`);
-    evidence.push(hello.workspace_root);
-    evidence.push(hello.staged ? `BIOS v${hello.bios_version}` : 'BIOS not staged yet');
-  } else {
-    evidence.push('no folder bound yet');
-  }
-  const suffix = hello.next_action ? ` Next: ${hello.next_action}` : '';
-  return `${hello.greeting} — ${evidence.join(' · ')}.${suffix}`;
+  // The four-state ladder: installed / bound / authorized / booted, at a glance. Every fact the old
+  // single line carried survives (companion version, agent/label, folder, BIOS version) — this is a
+  // better presentation of the same proof, not less of it. `authorized` is [?] because this
+  // companion is local-only: the remote BIOS source's auth is knowable only by a remote probe, which
+  // the doctor skill owns; hello never fails on it and never fakes it.
+  const mark = (state) => (state === true ? '[x]' : state === false ? '[ ]' : '[?]');
+  const lines = [
+    hello.greeting,
+    `  installed   ${mark(true)} ${hello.companion.name} ${hello.companion.version}`,
+    `  bound       ${mark(hello.bound)} ${hello.bound ? `${hello.agent_id}/${hello.label} \u00b7 ${hello.workspace_root}` : 'no folder bound yet'}`,
+    `  authorized  ${mark(null)} run 8hats-implant-doctor to check the remote BIOS source`,
+    `  booted      ${mark(hello.staged)} ${hello.staged ? `BIOS v${hello.bios_version}` : 'no BIOS staged'}`,
+  ];
+  if (hello.next_action) lines.push(`  next: ${hello.next_action}`);
+  return lines.join('\n');
 }
 
 function renderDoctor(doctor) {

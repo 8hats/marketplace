@@ -981,6 +981,11 @@ test('local_hello answers the liveness challenge from live state', { concurrency
   assert.equal(cold.result.structuredContent.bound, false);
   assert.equal(cold.result.structuredContent.staged, false);
   assert.match(cold.result.content[0].text, /no folder bound yet/);
+  // Four-state ladder — glanceable installed/bound/authorized/booted, cold state.
+  assert.match(cold.result.content[0].text, /installed\s+\[x\]/);
+  assert.match(cold.result.content[0].text, /bound\s+\[ \] no folder bound yet/);
+  assert.match(cold.result.content[0].text, /authorized\s+\[\?\].*doctor/);
+  assert.match(cold.result.content[0].text, /booted\s+\[ \] no BIOS staged/);
 
   await companion.handleRequest(session, {
     jsonrpc: '2.0',
@@ -1023,6 +1028,11 @@ test('local_hello answers the liveness challenge from live state', { concurrency
   assert.match(text, /^Hey there! I'm a hat, an implant on a head\./);
   assert.match(text, /hello-agent\/default/);
   assert.match(text, /BIOS v4/);
+  // Four-state ladder, warm state — the same facts, now as a status ladder.
+  assert.match(text, /installed\s+\[x\] .*implant/);
+  assert.match(text, /bound\s+\[x\] hello-agent\/default/);
+  assert.match(text, /authorized\s+\[\?\].*8hats-implant-doctor/);
+  assert.match(text, /booted\s+\[x\] BIOS v4/);
 });
 
 test('local_hello is read-only and never mutates the store', { concurrency: false }, async (t) => {
