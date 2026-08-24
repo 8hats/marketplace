@@ -5,6 +5,10 @@ BIOS Implant installs from the public marketplace
 in the path: the marketplace serves this tree directly. Node ≥ 20 must be on
 `PATH` — the local companion MCP runs under it.
 
+Handing this to an agent instead of doing it yourself: paste the block in
+[`docs/one-prompt-install.md`](../../docs/one-prompt-install.md) and it works out
+which harness it is in.
+
 ## Claude Code — verified
 
 ```text
@@ -32,9 +36,18 @@ Non-interactive provisioning via `settings.json`:
 
 Install through the desktop app's plugin browser using the same marketplace
 source, `8hats/marketplace`. Fully quit and reopen Claude Desktop after a first
-install or update so the UI starts from the reconciled plugin state. Nobody
-has yet driven a Local Cowork session end to end through this path, so treat
-it as prepared rather than proven.
+install or update so the UI starts from the reconciled plugin state.
+
+**Expect a consent modal on install.** Claude Desktop raises *"This plugin
+includes local MCP servers"* with a red banner — *"Installing will grant access
+to everything available to Cowork"* — naming `implant-local`. This is normal:
+the local companion is a local process, which is the whole point of it. The
+buttons are **Disable plugin** and **Continue**; the safe-sounding one aborts
+the install. Choose **Continue**.
+
+The marketplace sync itself is proven on a tree carrying the current fix
+(Windows, 2026-08-21). A Local Cowork session has not yet been driven end to
+end after that, so treat the session behaviour as prepared rather than proven.
 
 Do **not** use Settings → Connectors → *Add custom connector* for Local
 Cowork: that registers the remote server alone, without the skills, the
@@ -52,7 +65,7 @@ without a hook runner boot via [`AGENTS.md`](../../AGENTS.md).
 
 1. Open a fresh session so the host loads the plugin, MCP registrations,
    hooks, and skills.
-2. Run the BIOS Implant `doctor` skill.
+2. Run the BIOS Implant `8hats-implant-doctor` skill.
 3. Complete native OAuth only if the harness prompts for it. Never enter a
    Client ID, callback URL, scope, or other connector setting; the remote MCP
    owns discovery and automatic client registration.
@@ -69,16 +82,16 @@ without a hook runner boot via [`AGENTS.md`](../../AGENTS.md).
   skill, and complete native OAuth only if prompted.
 - `WARN BINDING_REQUIRED` — install succeeded, but the target workspace is
   not bound yet. Obtain the owner-provided one-use setup URL, open the
-  intended folder, and give that secret only to the `connect` skill there.
+  intended folder, and give that secret only to the `8hats-implant-connect` skill there.
 - `WARN RUNTIME_PROBE_REQUIRED` — local checks cannot prove authenticated
-  runtime health. Open a new session and run the `doctor` skill.
+  runtime health. Open a new session and run the `8hats-implant-doctor` skill.
 - `FAIL` — the expected contract did not complete; repair before use.
 
 ## Repair
 
 Reinstalling from the marketplace is the repair path: run the update pair
 (or uninstall and install again), restart the host session, and re-run the
-`doctor` skill. Skills, hooks, and both MCP registrations are reconciled by
+`8hats-implant-doctor` skill. Skills, hooks, and both MCP registrations are reconciled by
 the host's own plugin machinery — no separate installer exists.
 
 ## Troubleshooting
@@ -89,11 +102,11 @@ the host's own plugin machinery — no separate installer exists.
   skill, complete native OAuth only when prompted.
 - **`doctor` reports `BINDING_REQUIRED`** — obtain the owner-provided one-use
   setup URL, open the intended project folder, and give it only to the
-  `connect` skill from that exact folder.
+  `8hats-implant-connect` skill from that exact folder.
 - **`doctor` reports `RUNTIME_PROBE_REQUIRED`** — open a new session and run
-  the `doctor` skill.
+  the `8hats-implant-doctor` skill.
 - **Codex does not boot BIOS automatically** — expected: Codex has no hook
-  runner. Run the `boot` skill manually at session start, per `AGENTS.md`.
+  runner. Run the `8hats-implant-boot` skill manually at session start, per `AGENTS.md`.
 - **A machine still carries the retired npx-era install**
   (`bios-implant@agent-university`, frozen at the last npm release) — remove
   it, then install from the marketplace: `claude plugin uninstall

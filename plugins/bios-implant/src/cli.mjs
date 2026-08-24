@@ -1160,7 +1160,7 @@ async function readInstructions(deps) {
   const fileSystem = deps.fs ?? fsp;
   const instructionSources = [
     {
-      path: path.join(packageRoot, "skills", "install", "SKILL.md"),
+      path: path.join(packageRoot, "skills", "8hats-implant-install", "SKILL.md"),
       source: "skills/install/SKILL.md"
     },
     {

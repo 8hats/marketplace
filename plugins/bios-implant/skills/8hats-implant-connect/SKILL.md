@@ -1,5 +1,5 @@
 ---
-name: connect
+name: 8hats-implant-connect
 description: Invoke when the user asks to connect, activate, or bind BIOS Implant to the exact current workspace in a supported local session.
 allowed-tools: mcp__plugin_bios-implant_implant-local__local_doctor, mcp__plugin_bios-implant_implant-local__local_activate, mcp__plugin_bios-implant_implant-local__local_connect, mcp__plugin_bios-implant_implant-local__local_selection, mcp__plugin_bios-implant_implant-local__local_status
 ---
@@ -80,7 +80,7 @@ allowed-tools: mcp__plugin_bios-implant_implant-local__local_doctor, mcp__plugin
 
 `RESTART`
 1. The session's tool registry is fixed at session start: authorization completed mid-session does NOT make `bios_load` / `wm_load` appear in the running session.
-2. Finish by telling the owner the literal last step: start a fresh session and run the `boot` skill there. Authorization and the binding persist; the one-use link is never needed again.
+2. Finish by telling the owner the literal last step: start a fresh session and run the `8hats-implant-boot` skill there. Authorization and the binding persist; the one-use link is never needed again.
 
 ## Failure Paths
 

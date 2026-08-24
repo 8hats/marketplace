@@ -117,7 +117,7 @@ test('packaged local MCP entrypoint serves JSON-RPC when launched through a syml
   assert.equal(result.responses[0].result.serverInfo.name, 'implant-local');
   assert.deepEqual(
     result.responses[1].result.tools.map((tool) => tool.name),
-    ['local_activate', 'local_connect', 'local_selection', 'local_stage', 'local_status', 'local_doctor'],
+    ['local_activate', 'local_connect', 'local_selection', 'local_stage', 'local_status', 'local_doctor', 'local_hello'],
   );
   const tools = Object.fromEntries(result.responses[1].result.tools.map((tool) => [tool.name, tool]));
   assert.deepEqual(tools.local_doctor.annotations, {
@@ -528,7 +528,7 @@ test('handleRequest advertises initialize and exactly six tools', { concurrency:
   assert.equal(initialize.result.serverInfo.name, 'implant-local');
   assert.deepEqual(
     tools.result.tools.map((tool) => tool.name),
-    ['local_activate', 'local_connect', 'local_selection', 'local_stage', 'local_status', 'local_doctor'],
+    ['local_activate', 'local_connect', 'local_selection', 'local_stage', 'local_status', 'local_doctor', 'local_hello'],
   );
 });
 
@@ -948,5 +948,114 @@ test('runStdio emits newline-delimited json-rpc responses', { concurrency: false
   assert.equal(lines[0].id, 11);
   assert.deepEqual(lines[0].result, {});
   assert.equal(lines[1].id, 12);
-  assert.equal(lines[1].result.tools.length, 6);
+  assert.equal(lines[1].result.tools.length, 7);
+});
+
+test('local_hello answers the liveness challenge from live state', { concurrency: false }, async (t) => {
+  const companion = await loadCompanionModule();
+  const sandbox = await makeSandbox(t, 'implant-local-hello-');
+  const workspace = path.join(sandbox, 'workspace');
+  const stateRoot = path.join(sandbox, 'state');
+  await fs.mkdir(workspace, { recursive: true });
+  setStateRoot(t, stateRoot);
+
+  const session = companion.createSession({
+    listRoots: async () => [workspace],
+    output: new PassThrough(),
+    error: new PassThrough(),
+  });
+
+  const hello = (id) => companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id,
+    method: 'tools/call',
+    params: { name: 'local_hello', arguments: { folder: workspace } },
+  });
+
+  // Cold: the companion is running but nothing is bound. It must still answer — being
+  // reachable is the thing being proven — without claiming a binding it does not have.
+  const cold = await hello(1);
+  assert.equal(cold.result.isError, false);
+  assert.equal(cold.result.structuredContent.greeting, "Hey there! I'm a hat, an implant on a head.");
+  assert.equal(cold.result.structuredContent.alive, true);
+  assert.equal(cold.result.structuredContent.bound, false);
+  assert.equal(cold.result.structuredContent.staged, false);
+  assert.match(cold.result.content[0].text, /no folder bound yet/);
+
+  await companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 2,
+    method: 'tools/call',
+    params: {
+      name: 'local_connect',
+      arguments: { agent_id: 'hello-agent', label: 'default', folder: workspace },
+    },
+  });
+  await companion.handleRequest(session, {
+    jsonrpc: '2.0',
+    id: 3,
+    method: 'tools/call',
+    params: {
+      name: 'local_stage',
+      arguments: {
+        agent_id: 'hello-agent',
+        label: 'default',
+        body: biosBody(4),
+        version: 4,
+        etag: '"etag-4"',
+      },
+    },
+  });
+
+  const warm = await hello(4);
+  const structured = warm.result.structuredContent;
+  assert.equal(warm.result.isError, false);
+  assert.equal(structured.bound, true);
+  assert.equal(structured.staged, true);
+  assert.equal(structured.agent_id, 'hello-agent');
+  assert.equal(structured.label, 'default');
+  assert.equal(structured.bios_version, 4);
+  assert.equal(structured.workspace_root, await fs.realpath(workspace));
+
+  // The evidence must live in the sentence the human reads, not only in the structured
+  // payload — a model that merely memorised the greeting cannot invent these.
+  const text = warm.result.content[0].text;
+  assert.match(text, /^Hey there! I'm a hat, an implant on a head\./);
+  assert.match(text, /hello-agent\/default/);
+  assert.match(text, /BIOS v4/);
+});
+
+test('local_hello is read-only and never mutates the store', { concurrency: false }, async (t) => {
+  const companion = await loadCompanionModule();
+  const sandbox = await makeSandbox(t, 'implant-local-hello-ro-');
+  const workspace = path.join(sandbox, 'workspace');
+  const stateRoot = path.join(sandbox, 'state');
+  await fs.mkdir(workspace, { recursive: true });
+  setStateRoot(t, stateRoot);
+
+  const session = companion.createSession({
+    listRoots: async () => [workspace],
+    output: new PassThrough(),
+    error: new PassThrough(),
+  });
+
+  const listed = await companion.handleRequest(session, {
+    jsonrpc: '2.0', id: 1, method: 'tools/list', params: {},
+  });
+  const tool = listed.result.tools.find((entry) => entry.name === 'local_hello');
+  assert.ok(tool, 'local_hello must be advertised');
+  assert.deepEqual(tool.annotations, {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  });
+
+  const before = await fs.readdir(stateRoot).catch(() => []);
+  await companion.handleRequest(session, {
+    jsonrpc: '2.0', id: 2, method: 'tools/call',
+    params: { name: 'local_hello', arguments: { folder: workspace } },
+  });
+  const after = await fs.readdir(stateRoot).catch(() => []);
+  assert.deepEqual(after, before);
 });
