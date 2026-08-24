@@ -2,6 +2,26 @@
 
 All notable changes to BIOS Implant are documented in this file.
 
+## 1.0.22 - 2026-08-24
+
+- **Activation no longer requires a `curl` contract in the setup document.** The plugin used to
+  parse `-X POST '<endpoint>'` and `-H 'X-Enrollment-Capability: <cap>'` out of the fetched
+  `SETUP.md` and refuse to activate without them. Those lines were only ever a cross-check: the
+  activation endpoint is fixed by configuration (`registryOrigin` + `/api/registry/activate`) and
+  the one-use enrollment capability travels in the URL path — the POST already presented it as the
+  `x-enrollment-capability` header sourced from the URL, never from the document. When
+  app.agents.university stopped emitting the `curl` block (to keep the capability out of the served
+  body), the plugin read the correct document as *"missing its activation contract"* and every
+  first-time activation dead-ended. `parseSetupDocument` now takes only the `agent_id` from the
+  document; the endpoint and capability come from config and URL as before. Existing 1.0.21 (and
+  earlier) installs stay broken until they update — the slower path was chosen to keep the secret
+  out of the doc body
+- The unservable-`agent_id` guard (recreate-the-agent vs re-issue-the-link, keeping the one-use
+  link unspent) is preserved and no longer depends on the now-absent `curl` lines
+- **Version bump was overdue**: 1.0.21 already carried the Desktop-sync port (#1) and the
+  four-state hey ladder (#5), which shipped without their own bumps. This release realigns the
+  manifest, package, and runtime constant onto one number
+
 ## 1.0.21 - 2026-08-20
 
 - New local tool **`local_hello`** and a matching **`8hats-implant-hey`** skill: the "hey implant"

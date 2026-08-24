@@ -244,19 +244,23 @@ async function boundedResponseText(response) {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-function parseSetupDocument(document, expectedCapability, config) {
+function parseSetupDocument(document, config) {
+  // The document supplies ONE thing the plugin cannot know on its own: which agent_id this link
+  // claims. The activation endpoint is fixed by configuration and the one-use enrollment
+  // capability travels in the URL path (parseSetupUrl) — the POST presents it as the
+  // `x-enrollment-capability` header. The served document restates neither, and since v0.8.7 the
+  // app deliberately omits both to keep the capability out of the doc body; requiring a `curl`
+  // contract here read that correct document as "missing its activation contract" (L16).
   const agentMatch = new RegExp(`(?:^|\\n)agent_id:\\s*(${AGENT_ID_PATTERN})\\s*(?:\\n|$)`, 'u').exec(document);
-  const endpointMatch = /-X POST '([^'\r\n]+)'/u.exec(document);
-  const capabilityMatch = /-H 'X-Enrollment-Capability:\s*([A-Za-z0-9_-]+)'/u.exec(document);
-  if (!agentMatch || !endpointMatch || !capabilityMatch) {
-    // Tell an unservable id apart from a malformed document BEFORE any activation request: the
-    // remedies differ (recreate the agent vs re-issue the link), and stopping here keeps the
-    // one-use capability unspent either way. Without this branch, a document naming an id with
-    // a dot, an underscore, or >64 chars reads as "missing its activation contract" — or worse,
+  if (!agentMatch) {
+    // Tell an unservable id apart from a document that names no agent_id at all BEFORE any
+    // activation request: the remedies differ (recreate the agent vs re-issue the link), and
+    // stopping here keeps the one-use capability unspent either way. A document naming an id with
+    // a dot, an underscore, or >64 chars must read as "unservable" — not "malformed" — or it
     // activates, spends the link, and leaves bios_load answering `bad_shape` forever
     // (TVP_TEST_2-paired-2026-08, 2026-08-10).
     const wideAgent = /(?:^|\n)agent_id:\s*(\S{1,255})\s*(?:\n|$)/u.exec(document);
-    if (!agentMatch && wideAgent && endpointMatch && capabilityMatch) {
+    if (wideAgent) {
       throw new DomainError(
         'AGENT_ID_UNSERVABLE',
         `The setup document names agent_id "${wideAgent[1]}", which the BIOS service cannot `
@@ -265,29 +269,11 @@ function parseSetupDocument(document, expectedCapability, config) {
         { agent_id: wideAgent[1], retryable: false, link_spent: false },
       );
     }
-    throw new DomainError('SETUP_DOCUMENT_INVALID', 'The setup document is missing its activation contract.', {});
-  }
-  if (capabilityMatch[1] !== expectedCapability) {
-    throw new DomainError('SETUP_DOCUMENT_INVALID', 'The setup document capability does not match its URL.', {});
-  }
-
-  let activationUrl;
-  try {
-    activationUrl = new URL(endpointMatch[1]);
-  } catch {
-    throw new DomainError('SETUP_DOCUMENT_INVALID', 'The setup document activation endpoint is invalid.', {});
-  }
-  if (activationUrl.origin !== config.registryOrigin
-    || activationUrl.pathname !== '/api/registry/activate'
-    || activationUrl.username
-    || activationUrl.password
-    || activationUrl.search
-    || activationUrl.hash) {
-    throw new DomainError('SETUP_DOCUMENT_INVALID', 'The setup document activation endpoint is not approved.', {});
+    throw new DomainError('SETUP_DOCUMENT_INVALID', 'The setup document does not name an agent_id.', {});
   }
   return {
     agentId: agentMatch[1],
-    activationUrl: activationUrl.href,
+    activationUrl: `${config.registryOrigin}/api/registry/activate`,
   };
 }
 
@@ -372,7 +358,7 @@ async function localActivate(setupUrl) {
     );
   }
   const setupDocument = await boundedResponseText(setupResponse);
-  const contract = parseSetupDocument(setupDocument, setup.capability, config);
+  const contract = parseSetupDocument(setupDocument, config);
 
   const activationFetch = await fetchWithTransientRetry(
     () => fetch(contract.activationUrl, {
