@@ -1,5 +1,5 @@
 ---
-name: boot
+name: 8hats-implant-boot
 description: Invoke at session start or when the user asks to boot, refresh, or load BIOS Implant context for the exact current workspace.
 allowed-tools: mcp__plugin_bios-implant_implant-local__local_selection, mcp__plugin_bios-implant_implant-local__local_stage, mcp__plugin_bios-implant_implant-local__local_status, mcp__plugin_bios-implant_implant__bios_load, mcp__plugin_bios-implant_implant__wm_load
 ---

@@ -18,12 +18,12 @@ Ask the user only for visible native permissions, a missing Node prerequisite, n
 ## 3. Confirm the loaded plugin in a fresh session
 
 1. Fully quit and reopen Claude Desktop, then require a fresh Local Cowork session after installation or repair.
-2. Confirm that the `doctor`, `connect`, and `boot` skills are visible and that `implant-local` is available.
+2. Confirm that the `doctor`, `connect`, and `8hats-implant-boot` skills are visible and that `implant-local` is available.
 3. Never ask the user to reinstall when a fresh session can load the already installed plugin.
 
 ## 4. Run local doctor and complete OAuth
 
-1. Invoke the installed `doctor` skill.
+1. Invoke the installed `8hats-implant-doctor` skill.
 2. Treat a healthy local payload with `AUTH_REQUIRED`, `BINDING_REQUIRED`, or `RUNTIME_PROBE_REQUIRED` as installed, not broken.
 3. If Claude presents its native OAuth flow, tell the user why it is needed and ask them to approve it in the app. Never ask the user to open connector customization or enter a Client ID, callback URL, scope, secret, or other OAuth setting; the remote MCP owns discovery and automatic client registration.
 4. Never request, copy, display, store, or transmit the resulting token.
@@ -34,7 +34,7 @@ Ask the user only for visible native permissions, a missing Node prerequisite, n
 1. Skip this section when doctor confirms an existing binding for the intended workspace.
 2. Require the exact workspace folder; never infer it from a recent folder or repository name.
 3. Ask for the owner-provided one-use setup URL only when binding is still required.
-4. Give that one-use value only to the `connect` skill. Never pass it to a shell command, installer, doctor, log, or normal chat response.
+4. Give that one-use value only to the `8hats-implant-connect` skill. Never pass it to a shell command, installer, doctor, log, or normal chat response.
 5. Invoke `connect`, then invoke `doctor` again after `connect` completes.
 
 ## 6. Boot and finish

@@ -19,7 +19,7 @@ exact-folder → agent binding on the host.
   background daemon. It owns folder binding, one-use setup-link activation,
   last-good BIOS staging, and health checks. State lives under
   `AGENT_UNIVERSITY_HOME` or `~/.agent-university`.
-- The portable `install`, `connect`, `boot`, and `doctor` skills.
+- The portable `install`, `connect`, `boot`, and `8hats-implant-doctor` skills.
 - A Claude Code `SessionStart` hook that injects the session boot protocol,
   plus the plugin-native `SETUP.md` handoff used by Local Cowork.
 
@@ -66,13 +66,13 @@ Node ≥ 20 must be on `PATH`; the local companion runs under it.
 
 ## After installing — in a fresh session
 
-1. Run the `doctor` skill. Complete native OAuth for the `implant` server
+1. Run the `8hats-implant-doctor` skill. Complete native OAuth for the `implant` server
    only if prompted; never enter a client id, callback URL, or scope by hand.
 2. To bind a workspace: open the **exact folder** you want bound, obtain the
    owner-provided one-use setup URL, and give it only to the `connect`
    skill — never to a shell command, a log, or normal chat.
 3. `boot` fires from the SessionStart hook in Claude Code; on hook-less hosts
-   run the `boot` skill manually at session start.
+   run the `8hats-implant-boot` skill manually at session start.
 
 `WARN AUTH_REQUIRED`, `WARN BINDING_REQUIRED`, and
 `WARN RUNTIME_PROBE_REQUIRED` from `doctor` mean the install is healthy and
@@ -91,7 +91,7 @@ public URL for a transient reason, follow [SETUP.md](SETUP.md) in this tree —
 it is the same document.
 
 The complete durable agent workflow is packaged at
-[`skills/install/SKILL.md`](skills/install/SKILL.md).
+[`skills/8hats-implant-install/SKILL.md`](skills/8hats-implant-install/SKILL.md).
 
 ## Local And Remote
 

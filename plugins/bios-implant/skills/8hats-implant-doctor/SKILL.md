@@ -1,5 +1,5 @@
 ---
-name: doctor
+name: 8hats-implant-doctor
 description: Invoke when the user asks to diagnose, verify, or check BIOS Implant installation, binding, authentication, or boot readiness.
 allowed-tools: mcp__plugin_bios-implant_implant-local__local_doctor, mcp__plugin_bios-implant_implant-local__local_status, mcp__plugin_bios-implant_implant__bios_load
 ---

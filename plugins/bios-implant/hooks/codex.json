@@ -2,7 +2,7 @@
   "harness": "codex",
   "automaticSessionStart": false,
   "nativeHooksSupported": false,
-  "manualFallbackSkill": "boot",
+  "manualFallbackSkill": "8hats-implant-boot",
   "notes": [
     "Codex v1 does not consume a native BIOS Implant session-start hook.",
     "Run the boot skill manually at session start or before substantive work."

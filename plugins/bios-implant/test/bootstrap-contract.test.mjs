@@ -19,15 +19,15 @@ test("README exposes an autonomous Local Cowork bootstrap contract", async () =>
   assert.match(readme, /Remote Cowork: not supported/i);
   assert.match(readme, /\/plugin marketplace add 8hats\/marketplace/);
   assert.match(readme, /\/plugin install bios-implant@8hats/);
-  assert.match(readme, /skills\/install\/SKILL\.md/);
+  assert.match(readme, /skills\/8hats-implant-install\/SKILL\.md/);
   assert.doesNotMatch(readme, /npx -y/);
 });
 
 test("install skill owns the marketplace install, doctor, and handoff workflow", async () => {
-  const skill = await readPackageFile("skills", "install", "SKILL.md");
-  const metadata = await readPackageFile("skills", "install", "agents", "openai.yaml");
+  const skill = await readPackageFile("skills", "8hats-implant-install", "SKILL.md");
+  const metadata = await readPackageFile("skills", "8hats-implant-install", "agents", "openai.yaml");
 
-  assert.match(skill, /^---\nname: install\n/m);
+  assert.match(skill, /^---\nname: 8hats-implant-install\n/m);
   assert.match(skill, /Local Cowork/);
   assert.match(skill, /8hats\/marketplace/);
   assert.match(skill, /claude plugin install bios-implant@8hats/);
@@ -36,7 +36,7 @@ test("install skill owns the marketplace install, doctor, and handoff workflow",
   assert.match(skill, /BINDING_REQUIRED/);
   assert.match(skill, /fresh session/i);
   assert.doesNotMatch(skill, /npx -y/);
-  assert.match(metadata, /default_prompt: ".*\$install/);
+  assert.match(metadata, /default_prompt: ".*\$8hats-implant-install/);
 });
 
 test("Cowork receives the native post-install SETUP.md skill", async () => {
@@ -88,7 +88,7 @@ test("package metadata advertises the Cowork installer rather than a generic pac
 });
 
 test("doctor skill requires runtime evidence and a human-readable health table", async () => {
-  const skill = await readPackageFile("skills", "doctor", "SKILL.md");
+  const skill = await readPackageFile("skills", "8hats-implant-doctor", "SKILL.md");
 
   assert.match(skill, /resolve tools by capability.*not by server display name/i);
   assert.match(skill, /Do not report missing authentication from.*pending.*needs.auth/i);
@@ -102,7 +102,7 @@ test("doctor skill requires runtime evidence and a human-readable health table",
 });
 
 test("boot skill ties the status to the agent's knowledge, and bans credential archaeology", async () => {
-  const skill = await readPackageFile("skills", "boot", "SKILL.md");
+  const skill = await readPackageFile("skills", "8hats-implant-boot", "SKILL.md");
 
   // A config-K agent carries its knowledge inside the BIOS body and never needs wm_load. The old
   // rule downgraded any wm_load failure to PARTIAL unconditionally, so such an agent reported
@@ -121,7 +121,7 @@ test("boot skill ties the status to the agent's knowledge, and bans credential a
 });
 
 test("connect skill routes one-use activation through the native local companion", async () => {
-  const skill = await readPackageFile("skills", "connect", "SKILL.md");
+  const skill = await readPackageFile("skills", "8hats-implant-connect", "SKILL.md");
 
   assert.match(skill, /Pass the owner-provided setup URL exactly once to `local_activate`/);
   assert.match(skill, /perform its single activation request from the native host/);
@@ -135,8 +135,8 @@ test("remote authorization goes through the host plugin UI, never a pasted autho
   // client and callback port — the pasted URL's PKCE challenge was already dead. The skills must
   // name the UI path as THE action and ban both the tool call and the URL relay, in boot (where
   // an unauthorized bios_load surfaces) and in connect (whose REMOTE-AUTH owns the recovery).
-  const connect = await readPackageFile("skills", "connect", "SKILL.md");
-  const boot = await readPackageFile("skills", "boot", "SKILL.md");
+  const connect = await readPackageFile("skills", "8hats-implant-connect", "SKILL.md");
+  const boot = await readPackageFile("skills", "8hats-implant-boot", "SKILL.md");
 
   for (const [name, skill] of [["connect", connect], ["boot", boot]]) {
     assert.match(skill, /\/plugin/, `${name} names the /plugin UI`);
@@ -155,12 +155,12 @@ test("remote authorization goes through the host plugin UI, never a pasted autho
   // not offered as the default.
   assert.match(connect, /Only when no plugin UI exists/);
   // Mid-session authorization never surfaces the remote tools — the restart step must survive.
-  assert.match(connect, /start a fresh session and run the `boot` skill/);
+  assert.match(connect, /start a fresh session and run the `8hats-implant-boot` skill/);
   assert.match(boot, /mid-session authorization never surfaces the remote tools/);
 });
 
 test("every Codex skill prompt names its skill", async () => {
-  for (const skill of ["boot", "connect", "doctor", "install"]) {
+  for (const skill of ["8hats-implant-boot", "8hats-implant-connect", "8hats-implant-doctor", "8hats-implant-hey", "8hats-implant-install"]) {
     const metadata = await readPackageFile("skills", skill, "agents", "openai.yaml");
     assert.match(metadata, new RegExp(`default_prompt: ".*\\$${skill}\\b`));
   }

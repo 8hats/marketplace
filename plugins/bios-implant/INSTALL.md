@@ -52,7 +52,7 @@ without a hook runner boot via [`AGENTS.md`](../../AGENTS.md).
 
 1. Open a fresh session so the host loads the plugin, MCP registrations,
    hooks, and skills.
-2. Run the BIOS Implant `doctor` skill.
+2. Run the BIOS Implant `8hats-implant-doctor` skill.
 3. Complete native OAuth only if the harness prompts for it. Never enter a
    Client ID, callback URL, scope, or other connector setting; the remote MCP
    owns discovery and automatic client registration.
@@ -69,16 +69,16 @@ without a hook runner boot via [`AGENTS.md`](../../AGENTS.md).
   skill, and complete native OAuth only if prompted.
 - `WARN BINDING_REQUIRED` — install succeeded, but the target workspace is
   not bound yet. Obtain the owner-provided one-use setup URL, open the
-  intended folder, and give that secret only to the `connect` skill there.
+  intended folder, and give that secret only to the `8hats-implant-connect` skill there.
 - `WARN RUNTIME_PROBE_REQUIRED` — local checks cannot prove authenticated
-  runtime health. Open a new session and run the `doctor` skill.
+  runtime health. Open a new session and run the `8hats-implant-doctor` skill.
 - `FAIL` — the expected contract did not complete; repair before use.
 
 ## Repair
 
 Reinstalling from the marketplace is the repair path: run the update pair
 (or uninstall and install again), restart the host session, and re-run the
-`doctor` skill. Skills, hooks, and both MCP registrations are reconciled by
+`8hats-implant-doctor` skill. Skills, hooks, and both MCP registrations are reconciled by
 the host's own plugin machinery — no separate installer exists.
 
 ## Troubleshooting
@@ -89,11 +89,11 @@ the host's own plugin machinery — no separate installer exists.
   skill, complete native OAuth only when prompted.
 - **`doctor` reports `BINDING_REQUIRED`** — obtain the owner-provided one-use
   setup URL, open the intended project folder, and give it only to the
-  `connect` skill from that exact folder.
+  `8hats-implant-connect` skill from that exact folder.
 - **`doctor` reports `RUNTIME_PROBE_REQUIRED`** — open a new session and run
-  the `doctor` skill.
+  the `8hats-implant-doctor` skill.
 - **Codex does not boot BIOS automatically** — expected: Codex has no hook
-  runner. Run the `boot` skill manually at session start, per `AGENTS.md`.
+  runner. Run the `8hats-implant-boot` skill manually at session start, per `AGENTS.md`.
 - **A machine still carries the retired npx-era install**
   (`bios-implant@agent-university`, frozen at the last npm release) — remove
   it, then install from the marketplace: `claude plugin uninstall
