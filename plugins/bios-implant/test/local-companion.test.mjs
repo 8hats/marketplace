@@ -135,14 +135,24 @@ test('packaged local MCP entrypoint serves JSON-RPC when launched through a syml
   });
 });
 
-/** Serve a well-formed setup document + activation endpoint for `agentId` on a loopback server. */
-function makeActivationServer(t, agentId, capability, counters) {
+/**
+ * Serve a setup document + activation endpoint for `agentId` on a loopback server.
+ *
+ * `includeContract` (default true) emits the legacy `curl -X POST … -H 'X-Enrollment-Capability'`
+ * block. Set it false to serve the shape app.agents.university has served since v0.8.7: agent_id
+ * in a fenced block, the endpoint named only in prose, and no curl contract at all — the doc the
+ * plugin must still activate from (L16).
+ */
+function makeActivationServer(t, agentId, capability, counters, { includeContract = true } = {}) {
   const server = http.createServer((request, response) => {
     const origin = `http://127.0.0.1:${server.address().port}`;
     if (request.method === 'GET' && request.url === `/setup/${capability}/SETUP.md`) {
       counters.setupReads += 1;
       response.writeHead(200, { 'content-type': 'text/markdown; charset=utf-8' });
-      response.end(`# Agent setup\n\n\`\`\`text\nagent_id: ${agentId}\n\`\`\`\n\n\`\`\`bash\ncurl -X POST '${origin}/api/registry/activate' \\\n+  -H 'X-Enrollment-Capability: ${capability}'\n\`\`\`\n`);
+      const contractBlock = includeContract
+        ? `\n\n\`\`\`bash\ncurl -X POST '${origin}/api/registry/activate' \\\n+  -H 'X-Enrollment-Capability: ${capability}'\n\`\`\``
+        : `\n\n## 1. Activate\n\nHand the URL to the connect skill; it performs the single activation request (a POST to ${origin}/api/registry/activate) from the native host. There is no shell fallback.`;
+      response.end(`# Agent setup\n\n\`\`\`text\nagent_id: ${agentId}\n\`\`\`${contractBlock}\n`);
       return;
     }
     if (request.method === 'POST' && request.url === '/api/registry/activate') {
@@ -217,6 +227,67 @@ test('packaged local MCP performs activation over real host networking without e
   assert.equal(activate.structuredContent.folder_bound, true);
   assert.equal(activate.structuredContent.link_spent, true);
   assert.equal(activate.structuredContent.workspace_root, await fs.realpath(workspace));
+  assert.doesNotMatch(JSON.stringify(result), new RegExp(capability));
+});
+
+test('local_activate succeeds on a setup document with no curl contract — capability from the URL, endpoint from config (L16)', { concurrency: false }, async (t) => {
+  // The v0.8.7 regression: the app stopped emitting the `-X POST … -H X-Enrollment-Capability`
+  // curl block (to keep the one-use capability out of the doc body), but the plugin still
+  // required those lines and read the new doc as "missing its activation contract". The
+  // capability is already carried by the URL and the endpoint is already known from config, so
+  // the doc never needed to name either. This proves activation completes from the deployed shape.
+  const sandbox = await makeSandbox(t, 'implant-local-nocontract-');
+  const stagedPlugin = path.join(sandbox, 'staged-plugin');
+  await fs.symlink(PROJECT_ROOT, stagedPlugin, 'dir');
+  const workspace = path.join(sandbox, 'workspace');
+  const stateRoot = path.join(sandbox, 'state');
+  await fs.mkdir(workspace, { recursive: true });
+  await fs.mkdir(stateRoot, { recursive: true });
+
+  const capability = 'nocontract-capability-that-must-never-appear-in-tool-output';
+  const agentId = 'agent-no-contract';
+  const counters = { setupReads: 0, activationWrites: 0, receivedCapability: null };
+  const server = makeActivationServer(t, agentId, capability, counters, { includeContract: false });
+  await once(server, 'listening');
+
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const result = await runEntrypoint(path.join(stagedPlugin, COMPANION_ENTRYPOINT), [
+    { jsonrpc: '2.0', id: 1, method: 'initialize', params: {} },
+    {
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: {
+        name: 'local_activate',
+        arguments: { setup_url: `${origin}/setup/${capability}/SETUP.md` },
+      },
+    },
+  ], {
+    env: {
+      BIOS_IMPLANT_SETUP_ORIGIN: origin,
+      BIOS_IMPLANT_REGISTRY_ORIGIN: origin,
+      BIOS_IMPLANT_ALLOW_INSECURE_LOCAL_TEST: '1',
+      BIOS_IMPLANT_STATE_ROOT: stateRoot,
+    },
+    clientHandlers: {
+      'roots/list': () => ({ roots: [{ uri: pathToFileURL(workspace).href, name: 'ws' }] }),
+    },
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.stderr, '');
+  assert.equal(counters.setupReads, 1);
+  assert.equal(counters.activationWrites, 1);
+  // The capability the registry received came from the URL path, not from any doc line.
+  assert.equal(counters.receivedCapability, capability);
+  const byId = new Map(result.responses.filter((m) => !('method' in m)).map((m) => [m.id, m]));
+  const activate = byId.get(2).result;
+  assert.equal(activate.isError, false);
+  assert.equal(activate.structuredContent.agent_id, agentId);
+  assert.equal(activate.structuredContent.registry_bound, true);
+  assert.equal(activate.structuredContent.folder_bound, true);
+  assert.equal(activate.structuredContent.link_spent, true);
+  // The secret still never leaks into any tool output, contract or not.
   assert.doesNotMatch(JSON.stringify(result), new RegExp(capability));
 });
 
