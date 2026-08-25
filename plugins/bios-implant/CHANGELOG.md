@@ -2,6 +2,24 @@
 
 All notable changes to BIOS Implant are documented in this file.
 
+## 1.0.23 - 2026-08-25
+
+- **The session-start hook now guides proactively.** Until now it injected one fixed, jargon-y
+  boot instruction into every session — so a newcomer who was not yet connected got the same
+  developer-facing text as a fully set-up agent, and the onboarding next step was buried (the
+  live-run L3/L4/L7 "silence at every transition"). The hook now classifies the folder's
+  onboarding state and leads with the ONE next step in plain, branded language:
+  - **unbound** → "installed but this folder isn't connected — run `8hats-implant-connect` with your setup link"
+  - **connected but no BIOS staged** → "authorize the source (`8hats-implant-doctor`), then `8hats-implant-boot` in a fresh session"
+  - **fully set up** → the standard boot instruction, unchanged (a booted agent still needs it to load its BIOS each session)
+- **The classification is deliberately lean.** It reads the local binding + status files
+  directly (`readBindingRecord` + `localStatus`) — it never spawns the companion process and
+  never touches the network, so the common already-set-up session pays only a couple of small
+  file reads. Any unreadable state degrades to the safe default instruction: a SessionStart hook
+  must never crash a session.
+- **The `8hats-implant-hey` trigger is broadened** so a bare "hey" / "hi" / "hello" opening, or
+  "is it working?", surfaces the liveness check — not only the exact phrase "hey implant".
+
 ## 1.0.22 - 2026-08-24
 
 - **Activation no longer requires a `curl` contract in the setup document.** The plugin used to
