@@ -188,7 +188,7 @@ jobs:
           # Nothing here should ever carry a live credential, and this is a public
           # repo: internal GCP project / Secret Manager names do not belong either.
           pattern='ak_8hats_|BEGIN [A-Z ]*PRIVATE KEY|hats8-auth|auth-idp-jwks-keys|SEED_SERVICE_SECRET'
-          hits=$(grep -RInE "$pattern" . --exclude-dir=.git --exclude-dir=.github)
+          hits=$(grep -RInE "$pattern" . --exclude-dir=.git --exclude-dir=.github --exclude-dir=node_modules)
           if [ -n "$hits" ]; then
             echo "$hits" | while IFS= read -r line; do echo "::error::$line"; done
             exit 1
