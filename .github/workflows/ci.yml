@@ -147,6 +147,17 @@ jobs:
           cd plugins/bios-implant
           node --test
 
+      - name: Agents University Cowork install, test, and reproducible bundle
+        run: |
+          cd plugins/agents-university-cowork
+          npm ci
+          npm test
+          npm run build
+          git diff --exit-code -- dist
+
+      - name: Agents University Cowork clean bundle smoke
+        run: node plugins/agents-university-cowork/test/dist-smoke.mjs
+
       - name: npm-sourced plugins resolve on the registry
         run: |
           python3 - <<'PY'

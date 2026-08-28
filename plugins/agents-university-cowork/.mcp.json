@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "agents-university-cowork": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["dist/cowork-mcp.mjs"],
+      "cwd": "${CODEX_PLUGIN_ROOT}"
+    }
+  }
+}
