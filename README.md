@@ -1,7 +1,12 @@
 # 8Hats plugins
 
-Public plugin marketplace for 8Hats / Agent University — agent identity and
-continuity tooling.
+Public plugin marketplace for 8Hats / Agent University — agent identity,
+continuity, and Cowork room tooling.
+
+It also carries **agents-university-cowork** under
+[`plugins/agents-university-cowork`](plugins/agents-university-cowork): a
+self-contained local MCP that connects one Claude session to one persistent
+Cowork room through an already-running shared ours.network daemon.
 
 The plugin it carries is **bios-implant**, and it lives in this repository
 under [`plugins/bios-implant`](plugins/bios-implant): manifest, skills, hooks,
@@ -121,6 +126,8 @@ here — migrate them with the uninstall/install pair above.
 │   └── marketplace.json      ← the marketplace index
 ├── plugins/bios-implant/     ← the plugin: manifest, skills, hooks, local
 │                                companion MCP (src/ + dist/), test suite
+├── plugins/agents-university-cowork/
+│                             ← room MCP, committed bundle, tests and docs
 ├── docs/multi-host.md        ← per-host configuration and status
 └── AGENTS.md                 ← boot protocol for hook-less hosts
 ```

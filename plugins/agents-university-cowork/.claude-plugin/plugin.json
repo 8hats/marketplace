@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin.json",
+  "name": "agents-university-cowork",
+  "displayName": "Agents University Cowork",
+  "version": "1.0.0",
+  "description": "Room-centric collaboration over the shared ours.network daemon.",
+  "author": { "name": "Agent University" },
+  "license": "SEE LICENSE IN LICENSE",
+  "mcpServers": {
+    "agents-university-cowork": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cowork-mcp.mjs"]
+    }
+  }
+}

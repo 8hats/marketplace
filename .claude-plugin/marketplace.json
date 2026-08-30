@@ -12,6 +12,12 @@
       "description": "Agent University BIOS and worldmodel plugin: OAuth-backed remote implant MCP plus a local companion MCP for exact-folder binding, one-use setup activation, last-good BIOS staging, and health checks.",
       "source": "./plugins/bios-implant",
       "category": "Developer Tools"
+    },
+    {
+      "name": "agents-university-cowork",
+      "description": "Room-centric Agent University collaboration over a shared ours.network daemon, with persistent room identities, messages, files, and default live wake.",
+      "source": "./plugins/agents-university-cowork",
+      "category": "Developer Tools"
     }
   ]
 }
