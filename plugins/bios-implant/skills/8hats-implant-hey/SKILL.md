@@ -1,6 +1,6 @@
 ---
 name: 8hats-implant-hey
-description: Invoke when the user greets or challenges the implant — "hey implant", "are you awake", "are you there", "is the implant active", "prove you are running" — or asks for a visible sign that BIOS Implant is live in this session.
+description: Invoke when the user greets or challenges the implant, or checks whether it is working — including a bare "hey", "hi", or "hello" as an opening message, and "hey implant", "are you awake", "are you there", "is the implant active", "is it working", "prove you are running" — or asks for any visible sign that BIOS Implant is live in this session.
 allowed-tools: mcp__plugin_bios-implant_implant-local__local_hello
 ---
 
