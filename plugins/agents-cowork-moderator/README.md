@@ -55,4 +55,7 @@ Then, from this directory, run `npm ci`, `npm run build`, and `npm test`.
 Build resolution includes this plugin's pinned node_modules for shared source imports. CI also checks
 byte-identical rebuilds. Tests use mock bound clients and real MCP transports,
 including a configured standalone stdio bundle; they do not launch Fleet agents
-or touch a live daemon. This local candidate has not been published.
+or touch a live daemon. Critic accepted both plugins at
+`eb1ff53280939e5da2d4c5475c8418c70a9e2ae5`, with all 35 Personal tests and
+five Moderator tests passing, standalone MCP checks, and byte-identical rebuilds.
+Live Fleet integration was not exercised. This local candidate has not been published.

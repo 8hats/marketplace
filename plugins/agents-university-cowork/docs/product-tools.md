@@ -51,6 +51,7 @@ SDK3.7.2/MCP1.30.0 and dependency licenses. Installed plugins need no backend
 checkout, sibling plugin or node_modules. Run npm test and npm run build in this
 plugin; repeated builds must match committed dist byte-for-byte.
 
-Previous20-tool Personal code5c16aa4 was accepted by Critic. Removal of ac_join
-and the separate Moderator plugin are now submitted for exact new review.
+Critic accepted both plugins at eb1ff53280939e5da2d4c5475c8418c70a9e2ae5:
+Personal 35/35 tests, Moderator 5/5, plus an independent rejection regression.
+Both standalone MCP bundles were checked and rebuilt byte-for-byte.
 No remote publication, host installation or live backend deployment is claimed.
