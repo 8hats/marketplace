@@ -86,8 +86,8 @@ late results shared with legacy reads, concurrent disconnect refusal, retained
 mail after identity changes, byte-limited pages, file provenance and no resend.
 The distribution is bundled with pinned ours SDK3.7.2 and MCP SDK1.30.0.
 No daemon lifecycle, live identity changes, installation, remote push or release
-is performed by these tests. Version1.1.0 is a local review candidate until the
-Owner authorizes publication.
+is performed by these tests. Version1.1.0 is locally implemented and code-reviewed; remote publication
+requires the Owner's decision.
 
 ## Legacy inbox progress correction
 
@@ -99,3 +99,14 @@ ac_messages. With no eligible retained items, a legacy read performs at most one
 bounded fresh SDK read through the same capacity check. A full retained inbox
 still requires explicit ac_messages inspection before further consumption.
 The unchanged Critic regression plus large-prefix/capacity tests pass; full suite40/40.
+
+
+## Overall code acceptance
+
+Critic #332 accepted exact49ff35d51dc8f3420ced53c860bfacf13ba45295 on
+2026-09-12: independent40/40 tests, unchanged private starvation regression1/1,
+standalone MCP smoke and byte-identical rebuild of every committed dist file.
+The review covers all31 tools, contract ports, correlation/unknown outcomes,
+shared inbox retention, lifecycle exclusion, notifications, manifests and docs.
+Only agents-university-cowork changed. This accepts code and deterministic tests;
+it does not claim live backend deployment, publication or Owner task closure.

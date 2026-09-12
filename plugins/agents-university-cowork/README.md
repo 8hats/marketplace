@@ -26,3 +26,9 @@ See [product tools and usage](docs/product-tools.md) for the complete mapping.
 mail remains accessible through `ac_messages`. Unknown results require state
 inspection, never an automatic command retry. No incoming SDK command catalogue
 is installed. All31 tools share one active-call guard and the current room.
+
+
+Critic accepted the complete plugin code at `49ff35d` (40/40 independent tests,
+original private regression passing, reproducible standalone bundle). Publication
+and final task closure remain with the Owner. See the acceptance record in
+[product tools](docs/product-tools.md#overall-code-acceptance).
