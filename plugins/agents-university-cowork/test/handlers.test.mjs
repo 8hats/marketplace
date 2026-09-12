@@ -39,7 +39,7 @@ const data = (result) => { assert.equal(result.structuredContent.ok, true, JSON.
 test('five session handlers retain enter/reconnect/disconnect lifecycle', async () => {
   const source = await fs.mkdtemp(path.join(os.tmpdir(), 'cowork-handler-')); const file = path.join(source, 'a.txt'); await fs.writeFile(file, 'ok');
   const c = client(); c.getFiles = async (v) => { c.calls.push(['getFiles', v]); return { files: [{ wire_id: WIRE, from: { id: CID }, filename: 'a.txt', mime: 'text/plain', size: 2, date: 'now', path: file }], remaining: 0 }; }; const s = session(c); const srv = new FakeServer(); const reg = registry(); const runtime = await createRuntime({ session: s, server: srv, registry: reg });
-  assert.equal(srv.tools.size, 20);
+  assert.equal(srv.tools.size, 19);
   data(await srv.tools.get('enter_room').fn({ invite: 'invite', as_agent: 'Tutor' }));
   let listed = data(await srv.tools.get('list_rooms').fn({})).rooms[0]; assert.equal(listed.status, 'connected'); assert.equal(listed.membership_state, 'ready'); assert.equal(listed.bind_state, 'bound_here');
   assert.equal(data(await srv.tools.get('get_room_status').fn({})).status, 'connected');

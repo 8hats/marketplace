@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "8hats",
-  "description": "8Hats public plugin marketplace — agent identity and continuity tooling. Each capability is a remote MCP server plus a local companion vendored in this repository, so hosts that are not Claude Code can consume the same thing by pointing at the endpoint directly.",
+  "description": "8Hats public plugin marketplace \u2014 agent identity and continuity tooling. Each capability is a remote MCP server plus a local companion vendored in this repository, so hosts that are not Claude Code can consume the same thing by pointing at the endpoint directly.",
   "owner": {
     "name": "8Hats",
     "email": "tp@8hats.ai"
@@ -17,6 +17,12 @@
       "name": "agents-university-cowork",
       "description": "Room-centric Agent University collaboration over a shared ours.network daemon, with persistent room identities, messages, files, and default live wake.",
       "source": "./plugins/agents-university-cowork",
+      "category": "Developer Tools"
+    },
+    {
+      "name": "agents-cowork-moderator",
+      "description": "Moderator tools for the assigned existing Cowork identity; separate from Personal Agent.",
+      "source": "./plugins/agents-cowork-moderator",
       "category": "Developer Tools"
     }
   ]

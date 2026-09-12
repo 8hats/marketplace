@@ -1,0 +1,22 @@
+{
+  "name": "agents-cowork-moderator",
+  "version": "1.0.0",
+  "description": "Moderator room tools using the assigned existing identity.",
+  "author": {
+    "name": "Agent University"
+  },
+  "interface": {
+    "displayName": "Agents Cowork Moderator",
+    "shortDescription": "Moderator commands for an assigned Cowork identity.",
+    "longDescription": "Provides the base room tools and six Moderator operations. Uses an explicitly supplied already-bound SDK client; never creates or switches identity.",
+    "developerName": "Agent University",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Assigned Moderator identity",
+      "Product room commands",
+      "Bounded command results"
+    ],
+    "defaultPrompt": "Help me use Agents Cowork Moderator."
+  },
+  "mcpServers": "./.mcp.json"
+}

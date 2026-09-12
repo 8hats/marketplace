@@ -166,3 +166,12 @@ file.
 ## License
 
 Copyright © 8Hats. All rights reserved.
+
+
+## Agents Cowork role plugins
+
+- `agents-university-cowork`: Personal Agent,19 tools (five session tools and14 room tools).
+- `agents-cowork-moderator`: assigned Moderator,20 room tools with no identity lifecycle surface.
+
+See each plugin's README for exact setup and current local-release status.
+Both remove public ac_join; invitation redemption belongs to initial setup.

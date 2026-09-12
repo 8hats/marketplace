@@ -1,120 +1,56 @@
-# Product room tools: API r5 / system r11
+# Personal Agent room tools
 
-Owner's 2026-09-12 request extends **agents-university-cowork** only. Owner #347 removes the five old message/file tools; the five session tools remain. The shared executor library provides all21 local ac_*
-tools specified by API r5 section4. No incoming SDK commands are defined by the
-MVP; `registerCommands` is never used to call room consumers.
+Current plugin: agents-university-cowork, version1.1.0. Owner #347 removed five
+old message/file tools; #351 separated Moderator; #370 removed public ac_join.
+The current catalogue is19 tools: five session operations and14 Personal Agent
+ac_* tools. See [the complete Russian reference](mcp-tools-ru.md).
 
-## Design and authority
+## Tool surface
 
-One MCP process still selects one persistent room through enter_room or
-connect_to_room. Product tools use that room's contact CID and the currently
-bound identity; they accept no authentication actor override. Current identity
-name/CID is checked before SDK work and after completion. Backend current
-membership/command/evidence policy is authoritative. A native contact alone is
-not product admission, a sent receipt is not a decision, and a file receipt is
-not a committed document version.
+Session operations: enter_room, connect_to_room, disconnect_from_room,
+list_rooms, get_room_status. enter_room accepts the invitation while creating
+its persistent identity; reconnect selects the saved identity with force:false.
 
-The implementation ports accepted backend commit
-`dfe3a8796561d9651abd0cf2bb14d304121ac797`'s contracts, errors, AgentHarness and
-agent-tool executors into readable self-contained JavaScript under src/product.
-Their original TypeScript types were erased with esbuild, relative import
-extensions changed to .mjs, and absent command_results is treated as an empty
-batch for legacy SDK fixtures. No backend checkout is needed at build/install
-or runtime. Imported harness/tool regression tests preserve the accepted
-behavior. Updates must compare these modules with the backend contract and
-rerun both regression and plugin integration tests.
+Product commands: ac_read, ac_version_commit, ac_review_submit,
+ac_remark_record, ac_remark_set, ac_request_create, ac_request_decide,
+ac_instruction_propose, ac_history_annotate.
 
-The shared adapter in src/product-tools.mjs holds inbox/correlation state keyed
-by identity CID and room. ac_messages is the sole public inbox reader and exposes ordinary mail, unmatched results and correlated outcomes. Retention survives an
-explicit disconnect/reconnect inside the same MCP process, but is not persisted
-across process termination. No durable outbox/replay/reconciliation service is
-added. All tool calls are serialized, including disconnect/connect.
+SDK helpers: ac_commands, ac_message, ac_messages, ac_send_file, ac_files.
+There are no hidden legacy aliases, no public ac_join and no Moderator tools.
+Runtime fixes the Personal profile; input arguments cannot select Moderator.
+No incoming SDK registerCommands catalogue is installed.
 
-Responses are validated and bounded before selected mail/results are removed.
-Command timeouts and handler failures remain unknown with request wire ID when
-available; the plugin never automatically resends. Inspect ac_messages and
-ac_read before deciding on a new action. Native callbacks for command results
-emit body-free wakes, then the host explicitly calls ac_messages. Existing
-monitor lifecycle/reconnection behavior is preserved.
+## Execution and retention
 
-## Tools
+The current room supplies contact CID and the actual identity supplies actor
+authority. SDK identity name/CID is checked before SDK work and after completion.
+Backend membership/command/evidence checks remain authoritative. Sending a file
+does not commit a version, and sending a command does not establish success.
 
-Fifteen aliases send the corresponding consumer.ac.* command exactly once:
+One tool call runs at a time, including disconnect. ac_messages is the sole
+public inbox reader and returns ordinary mail, unmatched results and correlated
+command results. A result must come from the selected room and match the original
+request wire. Unknown completion is retained for explicit state inspection;
+mutations are never automatically resent. Retention survives reconnect within
+the same process, not process termination. Selected records are removed only
+after identity and serialized output checks. Pages are byte/count bounded.
 
-| Local tool | Room command |
-|---|---|
-| `ac_read` | `consumer.ac.read` |
-| `ac_version_commit` | `consumer.ac.version.commit` |
-| `ac_review_submit` | `consumer.ac.review.submit` |
-| `ac_review_publish` | `consumer.ac.review.publish` |
-| `ac_remark_record` | `consumer.ac.remark.record` |
-| `ac_remark_set` | `consumer.ac.remark.set` |
-| `ac_request_create` | `consumer.ac.request.create` |
-| `ac_request_route` | `consumer.ac.request.route` |
-| `ac_request_decide` | `consumer.ac.request.decide` |
-| `ac_instruction_propose` | `consumer.ac.instruction.propose` |
-| `ac_publication_propose` | `consumer.ac.publication.propose` |
-| `ac_history_annotate` | `consumer.ac.history.annotate` |
-| `ac_intervention_record` | `consumer.ac.intervention.record` |
-| `ac_stage_explain` | `consumer.ac.stage.explain` |
-| `ac_result_create` | `consumer.ac.result.create` |
+Notifications are body-free. On message/result wakes use ac_messages; on file
+wakes use ac_files. Native observation does not grant backend authority.
 
-Six SDK helpers complete the surface:
+## Source provenance and builds
 
-| Tool | Behavior |
-|---|---|
-| ac_commands | Advertised native catalogue plus current product capabilities |
-| ac_join | Explicit invitation/name via addContact; no identity or product grant |
-| ac_message | Public message or wire/sentence reply to selected room |
-| ac_messages | Selected/bounded mail and correlated command outcomes |
-| ac_send_file | Bounded path or base64 artifact, optional wire/sentence reply |
-| ac_files | List incoming room files, consume explicit selected wires, stream/hash-check stored bytes |
+src/product ports the accepted backend dfe3a879 contracts/errors/harness/tool
+executors with TypeScript erased using esbuild and .mjs imports. Shared source
+also supports the separate agents-cowork-moderator bundle. Internal descriptors
+are filtered by each public plugin; inclusion in source is not MCP registration.
+The SDK batch reader tolerates an absent command_results array as empty.
 
-A typical flow is connect_to_room → ac_commands → ac_read(kind:context) → an
-allowed domain tool. Use ac_read(kind:source,id:...) to resolve evidence through
-current backend authorization. Original-human operations still require that
-human's actual verified authority; tools do not impersonate the human.
+The repository builds each plugin into a self-contained dist bundle with pinned
+SDK3.7.2/MCP1.30.0 and dependency licenses. Installed plugins need no backend
+checkout, sibling plugin or node_modules. Run npm test and npm run build in this
+plugin; repeated builds must match committed dist byte-for-byte.
 
-## Verification and distribution
-
-Run `npm test`, `npm run build`, and `node test/dist-smoke.mjs` from this plugin.
-Tests exercise a real MCP client, strict union schemas, sender/reply correlation,
-late results shared with legacy reads, concurrent disconnect refusal, retained
-mail after identity changes, byte-limited pages, file provenance and no resend.
-The distribution is bundled with pinned ours SDK3.7.2 and MCP SDK1.30.0.
-No daemon lifecycle, live identity changes, installation, remote push or release
-is performed by these tests. Version1.1.0 is locally implemented and code-reviewed; remote publication
-requires the Owner's decision.
-
-## Overall code acceptance
-
-Critic #332 accepted exact49ff35d51dc8f3420ced53c860bfacf13ba45295 on
-2026-09-12: independent40/40 tests, unchanged private starvation regression1/1,
-standalone MCP smoke and byte-identical rebuild of every committed dist file.
-That previous review covered all31 tools, contract ports, correlation/unknown outcomes,
-shared inbox retention, lifecycle exclusion, notifications, manifests and docs.
-Only agents-university-cowork changed. This accepts code and deterministic tests;
-it does not claim live backend deployment, publication or Owner task closure.
-
-
-## Owner-requested removal of old tools (#347)
-
-The public catalogue now has26 tools: five session tools plus21 ac_* tools.
-Removed send_room_message, reply_to_room_message, read_room_messages,
-send_room_file and read_room_files, including their runtime handlers and the
-now-unused legacy inbox adapter/filter. No callable compatibility aliases remain.
-Use ac_message for text/wire replies, ac_messages for mail/results, and
-ac_send_file/ac_files for artifacts. MCP instructions now name those tools for
-notification handling. ac_join and Moderator presentation are unchanged by this
-specific instruction. Current public surface is pending exact re-review;
-the acceptance recorded above applies to the previous31-tool candidate.
-
-
-## Personal Agent separation (#351)
-
-The existing plugin is now Personal Agent only: five session tools plus the15
-base r11 section7.2 ac_* tools. The six Moderator-specific tools are excluded
-both from MCP discovery and direct invocation through the adapter. Profile is
-fixed by the plugin runtime, not supplied by MCP callers. Shared executors remain
-reusable for the separate Moderator plugin; backend authority is independent.
-This20-tool surface supersedes the intermediate26-tool count above.
+Previous20-tool Personal code5c16aa4 was accepted by Critic. Removal of ac_join
+and the separate Moderator plugin are now submitted for exact new review.
+No remote publication, host installation or live backend deployment is claimed.

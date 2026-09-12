@@ -13,7 +13,7 @@ tarball SHA-1 `389518ac2ff4fb739420ca86aae80baac0511165`, license
 `FSL-1.1-Apache-2.0`. Its exact published declarations were inspected for every
 used identity/contact/message/file/history/notification method.
 
-The original surface had ten tools. Owner #347 removes the five old message/file tools; the current surface is five session tools plus15 Personal Agent ac_* tools (Owner #351), as documented in [product tools](product-tools.md). One stdio process binds at most one room.
+The original surface had ten tools. Owner #347 removes the five old message/file tools; the current surface is five session tools plus14 Personal Agent ac_* tools (Owner #351/#370), as documented in [product tools](product-tools.md). One stdio process binds at most one room.
 `as_agent` is the exact persistent identity name. Received files deliberately
 omit room-author attribution until backlog capability gap `0mtcryued89400a4f`
 adds a shared authenticated cross-protocol file identifier.
