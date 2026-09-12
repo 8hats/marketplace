@@ -88,3 +88,14 @@ The distribution is bundled with pinned ours SDK3.7.2 and MCP SDK1.30.0.
 No daemon lifecycle, live identity changes, installation, remote push or release
 is performed by these tests. Version1.1.0 is a local review candidate until the
 Owner authorizes publication.
+
+## Legacy inbox progress correction
+
+Review #330 found that retained unrelated mail could starve legacy reads.
+The plugin harness now applies an internal legacy eligibility filter before
+page count/byte limits: valid selected-room messages and tracked results remain
+eligible, unrelated/unrecognized mail and unmatched results stay retained for
+ac_messages. With no eligible retained items, a legacy read performs at most one
+bounded fresh SDK read through the same capacity check. A full retained inbox
+still requires explicit ac_messages inspection before further consumption.
+The unchanged Critic regression plus large-prefix/capacity tests pass; full suite40/40.

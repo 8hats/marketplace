@@ -53,15 +53,16 @@ class AgentHarness {
     });
     return this.reading;
   }
-  receivedPage(selection = {}) {
+  receivedPage(selection = {}, filters = {}) {
     const results = [];
     for (const [wire, entry] of this.pending) if (entry.result) results.push({ request_wire_id: wire, command: entry.command, result: entry.result, ...entry.received_wire_id ? { wire_id: entry.received_wire_id } : {} });
     let bytes = 256, count = 0;
     const selectedWire = (item) => !selection.wire_ids || selection.wire_ids.includes(item.wire_id);
-    const select = (items) => {
+    const eligible = (item, kind) => selectedWire(item) && (!filters[kind] || filters[kind](item));
+    const select = (items, kind) => {
       const selected = [];
       for (const item of items) {
-        if (!selectedWire(item)) continue;
+        if (!eligible(item, kind)) continue;
         if (count >= (selection.limit ?? Infinity)) break;
         const size = Buffer.byteLength(JSON.stringify(item)) + 1;
         if (bytes + size > 15e5) break;
@@ -71,9 +72,9 @@ class AgentHarness {
       }
       return selected;
     };
-    const messages = select(this.messages), unmatched_results = select(this.unmatched), command_results = select(results);
+    const messages = select(this.messages, "messages"), unmatched_results = select(this.unmatched, "unmatched"), command_results = select(results, "results");
     const remaining = this.messages.length + this.unmatched.length + results.length - messages.length - unmatched_results.length - command_results.length;
-    if ([...this.messages, ...this.unmatched, ...results].some(selectedWire) && !messages.length && !unmatched_results.length && !command_results.length) fail(413, "payload_too_large", "A retained mail item exceeds the response page limit; data remains retained.");
+    if ([[this.messages,"messages"],[this.unmatched,"unmatched"],[results,"results"]].some(([items,kind]) => items.some(item => eligible(item,kind))) && !messages.length && !unmatched_results.length && !command_results.length) fail(413, "payload_too_large", "A retained mail item exceeds the response page limit; data remains retained.");
     return { messages, unmatched_results, command_results, remaining };
   }
   /** Acknowledge only the exact prepared selection after the caller validates output. */
@@ -117,10 +118,11 @@ class AgentHarness {
     try {
       if (name === "ac_messages") {
         const selection = arguments_;
-        let page = this.receivedPage(selection);
+        const filters = options?.legacyMessageFilter ? {messages:options.legacyMessageFilter, unmatched:()=>false} : {};
+        let page = this.receivedPage(selection, filters);
         if (!page.messages.length && !page.unmatched_results.length && !page.command_results.length) {
           await this.before(this.consume(selection), deadline);
-          page = this.receivedPage(selection);
+          page = this.receivedPage(selection, filters);
         }
         if (!options?.retainReceived) this.acknowledgeReceived(page);
         return page;

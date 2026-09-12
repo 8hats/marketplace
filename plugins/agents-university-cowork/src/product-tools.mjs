@@ -52,7 +52,7 @@ export function createProductTools(session,{timeoutMs=5000,pollMs=20}={}) {
   }catch(error){return {isError:true,...encode(error instanceof DomainError?{code:error.code,message:error.message,effect:invoked&&error.effect==='none'?'unknown':error.effect}:error instanceof ZodError?{code:'invalid_request',message:'Invalid room tool arguments.',effect:'none'}:{code:'dependency_unavailable',message:'Outcome unavailable; inspect state before repeating a mutation.',effect:'unknown'})};}
  }
  async function readLegacy(limit=50,render=value=>value){
-  const ctx=await context();const page=await ctx.harness.call('ac_messages',{limit:Math.min(limit,100)},{retainReceived:true});
+  const ctx=await context();const page=await ctx.harness.call('ac_messages',{limit:Math.min(limit,100)},{retainReceived:true,legacyMessageFilter:item=>item.from?.id?.toUpperCase()===session.bound.contact_cid.toUpperCase()&&parseRoomEnvelope(item.body??item.text,session.bound.room_name)?.kind==='room_msg'});
   if(!page.messages) return render({messages:[],remaining:0,outcome:page});
   const selected=[],messages=[];
   for(const item of page.messages){if(item.from?.id?.toUpperCase()!==session.bound.contact_cid.toUpperCase())continue;const body=parseRoomEnvelope(item.body??item.text,session.bound.room_name);if(body?.kind!=='room_msg')continue;selected.push(item);messages.push({message_id:body.message_id,wire_id:item.wire_id,author:body.author,text:body.text,time:body.at??item.date,kind:body.kind});}
