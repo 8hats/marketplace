@@ -2,7 +2,6 @@ import {z, ZodError} from 'zod';
 import {registerAgentTools} from './product/agent-tools.mjs';
 import {consumerCommands,limits} from './product/contracts.mjs';
 import {DomainError,fail} from './product/errors.mjs';
-import {parseRoomEnvelope} from './mcp/envelope.mjs';
 const consumers=new Set(Object.keys(consumerCommands).map(name=>name.replace('consumer.','').replaceAll('.','_')));
 const encode=value=>({content:[{type:'text',text:JSON.stringify(value??null)}]});
 const bounded=value=>{const result=encode(value);if(Buffer.byteLength(JSON.stringify(result))>4*1024*1024)fail(413,'payload_too_large','Output is too large; inspect retained mail.');return result;};
@@ -51,15 +50,6 @@ export function createProductTools(session,{timeoutMs=5000,pollMs=20}={}) {
    return result;
   }catch(error){return {isError:true,...encode(error instanceof DomainError?{code:error.code,message:error.message,effect:invoked&&error.effect==='none'?'unknown':error.effect}:error instanceof ZodError?{code:'invalid_request',message:'Invalid room tool arguments.',effect:'none'}:{code:'dependency_unavailable',message:'Outcome unavailable; inspect state before repeating a mutation.',effect:'unknown'})};}
  }
- async function readLegacy(limit=50,render=value=>value){
-  const ctx=await context();const page=await ctx.harness.call('ac_messages',{limit:Math.min(limit,100)},{retainReceived:true,legacyMessageFilter:item=>item.from?.id?.toUpperCase()===session.bound.contact_cid.toUpperCase()&&parseRoomEnvelope(item.body??item.text,session.bound.room_name)?.kind==='room_msg'});
-  if(!page.messages) return render({messages:[],remaining:0,outcome:page});
-  const selected=[],messages=[];
-  for(const item of page.messages){if(item.from?.id?.toUpperCase()!==session.bound.contact_cid.toUpperCase())continue;const body=parseRoomEnvelope(item.body??item.text,session.bound.room_name);if(body?.kind!=='room_msg')continue;selected.push(item);messages.push({message_id:body.message_id,wire_id:item.wire_id,author:body.author,text:body.text,time:body.at??item.date,kind:body.kind});}
-  const value={messages,command_results:page.command_results,remaining:page.remaining+page.messages.length-selected.length+page.unmatched_results.length};
-  await ctx.check();const result=render(value);if(Buffer.byteLength(JSON.stringify(result))>4*1024*1024)fail(413,'payload_too_large','Legacy output exceeds the limit; use ac_messages to inspect retained mail.');
-  ctx.harness.acknowledgeReceived({...page,messages:selected,unmatched_results:[]});
-  return result;
- }
- return {descriptors,execute,readLegacy};
+
+ return {descriptors,execute};
 }

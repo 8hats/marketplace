@@ -1,8 +1,5 @@
 #!/usr/bin/env node
 import { randomUUID } from 'node:crypto';
-import { constants } from 'node:fs';
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -12,13 +9,11 @@ import {zodToJsonSchema} from 'zod-to-json-schema';
 import { CoworkSession } from './session.mjs';
 import { RoomRegistry } from './registry.mjs';
 import { MonitorManager } from './monitor-manager.mjs';
-import { parseRoomEnvelope } from './mcp/envelope.mjs';
 
 export const VERSION = '1.1.0';
 const text = (data) => ({ content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data });
 const ok = (data) => text({ ok: true, data, request_id: randomUUID() });
 const fail = (code, message, retryable = false, action) => text({ ok: false, error: { code, message, retryable, ...(action ? { action } : {}) }, request_id: randomUUID() });
-const operation = () => randomUUID();
 const identityTaken = (error) => /exists|taken|duplicate/i.test(error?.message ?? '');
 const PUBLIC_CODES = new Set(['session_already_bound', 'human_identity_required', 'identity_name_taken', 'room_name_conflict', 'room_not_found', 'identity_in_use', 'room_contact_missing', 'not_connected', 'room_not_ready', 'message_not_found', 'file_not_found', 'file_unreadable', 'file_too_large', 'daemon_unavailable']);
 const SDK_CODES = new Map([
@@ -34,7 +29,7 @@ export async function createRuntime({ session = new CoworkSession(), server: inj
   const registry = injectedRegistry ?? new RoomRegistry(session.selection.expectStateDir);
   await registry.init();
   await registry.list();
-  const server = injectedServer ?? new McpServer({ name: 'agents-university-cowork', version: VERSION }, { capabilities: { logging: {} }, instructions: 'Bind one Cowork room; valid live wakes should be followed by the matching room read tool.' });
+  const server = injectedServer ?? new McpServer({ name: 'agents-university-cowork', version: VERSION }, { capabilities: { logging: {} }, instructions: 'Connect one Cowork room. On message or command-result wakes call ac_messages; on file wakes call ac_files. Send text and wire replies with ac_message. Inspect unknown command outcomes before any deliberate new action.' });
   const monitor = new MonitorManager({ server, registry });
 
   const product = createProductTools(session,productOptions);
@@ -124,44 +119,6 @@ export async function createRuntime({ session = new CoworkSession(), server: inj
     let row = requireBound(); const client = await session.ensureAttached(); row = await liveReady(client, row); session.bound = row;
     const sessions = identitySessions(await client.listIdentities());
     return ok({ ...publicRoom(row, sessions), can_send: row.membership_state === 'ready', can_read: true, monitoring: 'armed' });
-  });
-
-  register('send_room_message', 'Send text to the bound room.', { text: z.string().min(1).max(100000) }, async ({ text: body }) => {
-    const row = requireBound(); if (row.membership_state !== 'ready') throw Object.assign(new Error('room_not_ready'), { code: 'room_not_ready' });
-    const outcome = await (await session.ensureAttached()).sendMessage({ contact: row.contact_cid, text: body });
-    return ok({ operation_id: operation(), outcome: outcome.kind, history_stored: outcome.history_stored ?? null, warnings: [] });
-  });
-
-  register('read_room_messages', 'Drain the oldest unread room messages and hide non-room content.', { limit: z.number().int().min(1).max(200).optional() }, async ({ limit = 50 }) => {
-    requireBound();return await product.readLegacy(limit,ok);
-  });
-
-  register('reply_to_room_message', 'Reply to a room message still available in SDK history.', { message_id: z.string().min(1), text: z.string().min(1).max(100000) }, async ({ message_id, text: body }) => {
-    const row = requireBound(); const client = await session.ensureAttached(); let cursor; let target;
-    do { const page = await client.listHistory({ peer_cid: row.contact_cid, direction: 'in', before_seq: cursor, limit: 200 });
-      target = page.items.find((item) => parseRoomEnvelope(item.body ?? item.text, row.room_name)?.message_id === message_id); cursor = page.next_cursor;
-    } while (!target && cursor);
-    if (!target) throw Object.assign(new Error('message_not_found'), { code: 'message_not_found' });
-    const outcome = await client.sendMessage({ contact: row.contact_cid, text: body, reply_to_wire_id: target.wire_id });
-    return ok({ message_id: operation(), reply_to: message_id, outcome: outcome.kind, warnings: [] });
-  });
-
-  register('send_room_file', 'Send one file to the bound room; text captions are separate messages.', { path: z.string().min(1) }, async ({ path: source }) => {
-    const row = requireBound(); if (row.membership_state !== 'ready') throw Object.assign(new Error('room_not_ready'), { code: 'room_not_ready' });
-    let bytes; try { bytes = await fs.readFile(source); } catch { throw Object.assign(new Error('file_unreadable'), { code: 'file_unreadable' }); }
-    const client = await session.ensureAttached();
-    const upload = await client.uploadFile(bytes, { filename: path.basename(source), size: bytes.byteLength });
-    const outcome = await client.sendFile({ contact: row.contact_cid, upload_id: upload.upload_id, filename: upload.filename, mime: upload.mime });
-    return ok({ operation_id: operation(), outcome: outcome.kind, warnings: [] });
-  });
-
-  register('read_room_files', 'Drain unread SDK-managed room files; author attribution is intentionally omitted.', { limit: z.number().int().min(1).max(200).optional() }, async ({ limit = 50 }) => {
-    const row = requireBound(); const payload = await (await session.ensureAttached()).getFiles({ limit });
-    const files = await Promise.all(payload.files.filter((f) => f.from?.id === row.contact_cid).map(async (f) => {
-      const accessible = f.path ? await Promise.all([fs.access(f.path, constants.R_OK), fs.stat(f.path)]).then(([, stat]) => stat.isFile(), () => false) : false;
-      return { file_id: f.wire_id, filename: f.filename, mime: f.mime, size: f.size, time: f.date, sdk_file_ref: accessible ? f.path : f.wire_id, availability: accessible ? 'available' : f.path ? 'unavailable' : 'metadata_only' };
-    }));
-    return ok({ files, remaining: payload.remaining });
   });
 
   for(const tool of product.descriptors.values()){

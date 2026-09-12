@@ -1,7 +1,6 @@
 # Product room tools: API r5 / system r11
 
-Owner's 2026-09-12 request extends **agents-university-cowork** only. The ten
-existing room/session tools remain. The plugin now provides all21 local ac_*
+Owner's 2026-09-12 request extends **agents-university-cowork** only. Owner #347 removes the five old message/file tools; the five session tools remain. The plugin now provides all21 local ac_*
 tools specified by API r5 section4. No incoming SDK commands are defined by the
 MVP; `registerCommands` is never used to call room consumers.
 
@@ -26,12 +25,10 @@ behavior. Updates must compare these modules with the backend contract and
 rerun both regression and plugin integration tests.
 
 The shared adapter in src/product-tools.mjs holds inbox/correlation state keyed
-by identity CID and room. Both ac_messages and legacy read_room_messages use it;
-legacy reads return an additional command_results array and retain unrecognized
-or unrelated mail for explicit ac_messages inspection. Retention survives an
+by identity CID and room. ac_messages is the sole public inbox reader and exposes ordinary mail, unmatched results and correlated outcomes. Retention survives an
 explicit disconnect/reconnect inside the same MCP process, but is not persisted
 across process termination. No durable outbox/replay/reconciliation service is
-added. All tool calls are serialized, including legacy disconnect/connect.
+added. All tool calls are serialized, including disconnect/connect.
 
 Responses are validated and bounded before selected mail/results are removed.
 Command timeouts and handler failures remain unknown with request wire ID when
@@ -89,24 +86,25 @@ No daemon lifecycle, live identity changes, installation, remote push or release
 is performed by these tests. Version1.1.0 is locally implemented and code-reviewed; remote publication
 requires the Owner's decision.
 
-## Legacy inbox progress correction
-
-Review #330 found that retained unrelated mail could starve legacy reads.
-The plugin harness now applies an internal legacy eligibility filter before
-page count/byte limits: valid selected-room messages and tracked results remain
-eligible, unrelated/unrecognized mail and unmatched results stay retained for
-ac_messages. With no eligible retained items, a legacy read performs at most one
-bounded fresh SDK read through the same capacity check. A full retained inbox
-still requires explicit ac_messages inspection before further consumption.
-The unchanged Critic regression plus large-prefix/capacity tests pass; full suite40/40.
-
-
 ## Overall code acceptance
 
 Critic #332 accepted exact49ff35d51dc8f3420ced53c860bfacf13ba45295 on
 2026-09-12: independent40/40 tests, unchanged private starvation regression1/1,
 standalone MCP smoke and byte-identical rebuild of every committed dist file.
-The review covers all31 tools, contract ports, correlation/unknown outcomes,
+That previous review covered all31 tools, contract ports, correlation/unknown outcomes,
 shared inbox retention, lifecycle exclusion, notifications, manifests and docs.
 Only agents-university-cowork changed. This accepts code and deterministic tests;
 it does not claim live backend deployment, publication or Owner task closure.
+
+
+## Owner-requested removal of old tools (#347)
+
+The public catalogue now has26 tools: five session tools plus21 ac_* tools.
+Removed send_room_message, reply_to_room_message, read_room_messages,
+send_room_file and read_room_files, including their runtime handlers and the
+now-unused legacy inbox adapter/filter. No callable compatibility aliases remain.
+Use ac_message for text/wire replies, ac_messages for mail/results, and
+ac_send_file/ac_files for artifacts. MCP instructions now name those tools for
+notification handling. ac_join and Moderator presentation are unchanged by this
+specific instruction. Current public surface is pending exact re-review;
+the acceptance recorded above applies to the previous31-tool candidate.

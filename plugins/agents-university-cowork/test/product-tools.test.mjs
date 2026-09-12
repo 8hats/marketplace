@@ -11,17 +11,16 @@ function fixture(overrides={}) {
 }
 test('plugin advertises all21 strict ac tools and correlates one actual room command',async()=>{
  const f=fixture();const runtime=await createRuntime(f);try{
- assert.equal(f.tools.size,31);assert.equal(f.tools.has('ac_request_decide'),true);
+ assert.equal(f.tools.size,26);assert.equal(f.tools.has('ac_request_decide'),true);
  const result=await f.tools.get('ac_read').fn({kind:'room'});assert.equal(JSON.parse(result.content[0].text).status,'committed');assert.deepEqual(f.counts(),{sends:1,reads:1});
  const invalid=await f.tools.get('ac_read').fn({kind:'room',actor_id:'forged'});assert.equal(invalid.isError,true);assert.deepEqual(f.counts(),{sends:1,reads:1});
  }finally{await runtime.shutdown();}
 });
-test('legacy read shares late results and retains unrelated mail without resend',async()=>{
+test('ac_messages retrieves late results and unrelated mail without resend',async()=>{
  let ready=false;const f=fixture({getMessages:async()=>({messages:ready?[{wire_id:'other',from:{id:'C'.repeat(64)},body:'private'}]:[],command_results:ready?[{wire_id:'late',direction:'in',message_kind:'command_result',from:{id:room},reply_to:{wire_id:'request'},body:JSON.stringify({ok:true,result:{ok:false,error:'local_effect_committed'}})}]:[],remaining:0})});
  const runtime=await createRuntime({...f,productOptions:{timeoutMs:10,pollMs:1}});try{
  assert.equal(JSON.parse((await f.tools.get('ac_read').fn({kind:'room'})).content[0].text).status,'unknown');ready=true;
- const legacy=await f.tools.get('read_room_messages').fn({});assert.equal(legacy.structuredContent.data.command_results[0].result.status,'unknown');
- const mail=JSON.parse((await f.tools.get('ac_messages').fn({})).content[0].text);assert.equal(mail.messages[0].wire_id,'other');assert.equal(f.counts().sends,1);
+ const mail=JSON.parse((await f.tools.get('ac_messages').fn({})).content[0].text);assert.equal(mail.command_results[0].result.status,'unknown');assert.equal(mail.messages[0].wire_id,'other');assert.equal(f.counts().sends,1);
  }finally{await runtime.shutdown();}
 });
 test('one active tool prevents disconnect; changed identity retains completed result for original identity',async()=>{
@@ -36,7 +35,7 @@ test('one active tool prevents disconnect; changed identity retains completed re
 test('actual MCP client sees strict union schemas and executes plugin tools',async()=>{
  const {Client}=await import('@modelcontextprotocol/sdk/client/index.js');const {InMemoryTransport}=await import('@modelcontextprotocol/sdk/inMemory.js');
  const f=fixture(),runtime=await createRuntime({...f,server:undefined}),client=new Client({name:'host-test',version:'1'});const [a,b]=InMemoryTransport.createLinkedPair();
- try{await runtime.server.connect(a);await client.connect(b);const tools=(await client.listTools()).tools;assert.equal(tools.length,31);assert.ok(tools.every(tool=>tool.inputSchema.type==='object'));assert.ok(tools.find(tool=>tool.name==='ac_request_decide').inputSchema.anyOf);
+ try{await runtime.server.connect(a);await client.connect(b);const tools=(await client.listTools()).tools;assert.equal(tools.length,26);assert.ok(tools.every(tool=>tool.inputSchema.type==='object'));for(const name of ['send_room_message','read_room_messages','reply_to_room_message','send_room_file','read_room_files']){assert.equal(tools.some(tool=>tool.name===name),false);assert.equal((await client.callTool({name,arguments:{}})).isError,true);}assert.ok(tools.find(tool=>tool.name==='ac_request_decide').inputSchema.anyOf);
  const result=await client.callTool({name:'ac_read',arguments:{kind:'room'}});assert.equal(JSON.parse(result.content[0].text).status,'committed');
  assert.equal((await client.callTool({name:'ac_read',arguments:{kind:'room',unexpected:true}})).isError,true);
  }finally{await client.close();await runtime.shutdown();await runtime.server.close();}

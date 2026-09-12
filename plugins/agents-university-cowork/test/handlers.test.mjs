@@ -36,19 +36,13 @@ function registry(initial = []) {
 function session(c) { return { selection: { expectStateDir: '/fake' }, client: c, bound: null, async ensureAttached() { return this.client; }, async release() { this.bound = null; await c.releaseLease(); } }; }
 const data = (result) => { assert.equal(result.structuredContent.ok, true, JSON.stringify(result.structuredContent)); return result.structuredContent.data; };
 
-test('all ten legacy handlers execute success schemas against SDK 3.7.2 shapes', async () => {
+test('five session handlers retain enter/reconnect/disconnect lifecycle', async () => {
   const source = await fs.mkdtemp(path.join(os.tmpdir(), 'cowork-handler-')); const file = path.join(source, 'a.txt'); await fs.writeFile(file, 'ok');
   const c = client(); c.getFiles = async (v) => { c.calls.push(['getFiles', v]); return { files: [{ wire_id: WIRE, from: { id: CID }, filename: 'a.txt', mime: 'text/plain', size: 2, date: 'now', path: file }], remaining: 0 }; }; const s = session(c); const srv = new FakeServer(); const reg = registry(); const runtime = await createRuntime({ session: s, server: srv, registry: reg });
-  assert.equal(srv.tools.size, 31);
+  assert.equal(srv.tools.size, 26);
   data(await srv.tools.get('enter_room').fn({ invite: 'invite', as_agent: 'Tutor' }));
   let listed = data(await srv.tools.get('list_rooms').fn({})).rooms[0]; assert.equal(listed.status, 'connected'); assert.equal(listed.membership_state, 'ready'); assert.equal(listed.bind_state, 'bound_here');
   assert.equal(data(await srv.tools.get('get_room_status').fn({})).status, 'connected');
-  assert.equal(data(await srv.tools.get('send_room_message').fn({ text: 'hi' })).outcome, 'e2e');
-  assert.equal(data(await srv.tools.get('read_room_messages').fn({ limit: 1 })).messages[0].message_id, 'm1');
-  assert.equal(data(await srv.tools.get('reply_to_room_message').fn({ message_id: 'm1', text: 'reply' })).reply_to, 'm1');
-  data(await srv.tools.get('send_room_file').fn({ path: file }));
-  const received = data(await srv.tools.get('read_room_files').fn({ limit: 1 })).files[0]; assert.equal(received.sdk_file_ref, file); assert.equal(received.availability, 'available');
-  assert.ok(c.calls.some(([name, args]) => name === 'getMessages' && args.limit === 1)); assert.ok(c.calls.some(([name, args]) => name === 'getFiles' && args.limit === 1));
   data(await srv.tools.get('disconnect_from_room').fn({}));
   listed = data(await srv.tools.get('list_rooms').fn({})).rooms[0]; assert.equal(listed.status, 'disconnected'); assert.equal(listed.membership_state, 'ready'); assert.equal(listed.bind_state, 'unbound');
   const srv2 = new FakeServer(); const s2 = session(c); const runtime2 = await createRuntime({ session: s2, server: srv2, registry: reg });
@@ -64,18 +58,6 @@ test('list_rooms projects exact SDK identity session bind-state enums', async ()
     const srv = new FakeServer(); await createRuntime({ session: session(c), server: srv, registry: registry([row]) });
     const projected = data(await srv.tools.get('list_rooms').fn({})).rooms[0]; assert.equal(projected.bind_state, expected); assert.equal(projected.status, expected === 'bound_here' ? 'connected' : 'disconnected');
   }
-});
-
-test('received file path is exposed only when readable by this OS user', async () => {
-  const row = { room_name: 'Room', identity_name: 'Tutor', contact_cid: CID, membership_state: 'ready' };
-  const c = client(); const s = session(c); s.bound = row; const srv = new FakeServer(); await createRuntime({ session: s, server: srv, registry: registry([row]) });
-  const file = data(await srv.tools.get('read_room_files').fn({})).files[0]; assert.equal(file.sdk_file_ref, WIRE); assert.equal(file.availability, 'unavailable');
-});
-
-test('reply lookup paginates SDK history until the exact strict room envelope is found', async () => {
-  let page = 0; const c = client({ async listHistory(v) { page += 1; return page === 1 ? { items: [{ wire_id: 'C'.repeat(64), body: 'malformed' }], next_cursor: 40 } : { items: [{ wire_id: WIRE, body: envelope }], next_cursor: null }; } });
-  const row = { room_name: 'Room', identity_name: 'Tutor', contact_cid: CID, membership_state: 'ready' }; const s = session(c); s.bound = row; const srv = new FakeServer(); await createRuntime({ session: s, server: srv, registry: registry([row]) });
-  data(await srv.tools.get('reply_to_room_message').fn({ message_id: 'm1', text: 'reply' })); assert.equal(page, 2);
 });
 
 test('enter cleanup and connect post-bind failures release all acquired state', async () => {
@@ -98,21 +80,9 @@ test('startup registry corruption fails before SDK attachment or tool mutation',
   assert.equal(attached, 0); assert.equal(srv.tools.size, 0);
 });
 
-test('stable public errors redact SDK and filesystem details', async () => {
-  const row = { room_name: 'Room', identity_name: 'Tutor', contact_cid: CID, membership_state: 'ready' };
-  for (const [error, expected] of [[Object.assign(new Error('/private/file'), { code: 'FILE_TOO_LARGE' }), 'file_too_large'], [Object.assign(new Error('connect ECONNREFUSED /secret'), { code: 'ECONNREFUSED' }), 'daemon_unavailable']]) {
-    const c = client({ async sendMessage() { throw error; } }); const srv = new FakeServer(); const s = session(c); s.bound = row; await createRuntime({ session: s, server: srv, registry: registry([row]) });
-    const out = await srv.tools.get('send_room_message').fn({ text: 'x' }); assert.equal(out.structuredContent.error.code, expected); assert.doesNotMatch(JSON.stringify(out.structuredContent), /private|secret/);
-  }
-  const c = client(); const srv = new FakeServer(); const s = session(c); s.bound = row; await createRuntime({ session: s, server: srv, registry: registry([row]) });
-  const out = await srv.tools.get('send_room_file').fn({ path: '/definitely/private/missing' }); assert.equal(out.structuredContent.error.code, 'file_unreadable'); assert.doesNotMatch(JSON.stringify(out.structuredContent), /definitely|private/);
-  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'cowork-limit-')); const local = path.join(temp, 'large.bin'); await fs.writeFile(local, '1234');
-  const tooLargeClient = client({ async uploadFile() { throw new Error("uploadFile(large.bin): upload is 4 bytes, at or over the transport's 3-byte envelope budget — it could not be sent even with no filename or MIME, so it is refused before it is stored"); } });
-  const tooLargeSession = session(tooLargeClient); tooLargeSession.bound = row; const tooLargeServer = new FakeServer(); await createRuntime({ session: tooLargeSession, server: tooLargeServer, registry: registry([row]) });
-  const limited = await tooLargeServer.tools.get('send_room_file').fn({ path: local }); assert.equal(limited.structuredContent.error.code, 'file_too_large'); assert.doesNotMatch(JSON.stringify(limited.structuredContent), /large\.bin|4 bytes|3-byte/);
-  const unbound = session(client()); const unboundServer = new FakeServer(); await createRuntime({ session: unbound, server: unboundServer, registry: registry([row]) });
-  for (const name of ['get_room_status', 'send_room_message', 'read_room_messages', 'reply_to_room_message', 'send_room_file', 'read_room_files']) {
-    const args = name === 'send_room_message' ? { text: 'x' } : name === 'reply_to_room_message' ? { message_id: 'm', text: 'x' } : name === 'send_room_file' ? { path: '/x' } : {};
-    assert.equal((await unboundServer.tools.get(name).fn(args)).structuredContent.error.code, 'not_connected');
-  }
+test('session tools reject unbound status and redact SDK failures',async()=>{
+ const c=client({async listContacts(){throw Error('/private/secret');}}),srv=new FakeServer(),s=session(c);await createRuntime({session:s,server:srv,registry:registry()});
+ assert.equal((await srv.tools.get('get_room_status').fn({})).structuredContent.error.code,'not_connected');
+ s.bound={room_name:'Room',identity_name:'Tutor',contact_cid:CID,membership_state:'ready'};
+ const result=await srv.tools.get('get_room_status').fn({});assert.equal(result.structuredContent.ok,false);assert.doesNotMatch(JSON.stringify(result),/private|secret/);
 });

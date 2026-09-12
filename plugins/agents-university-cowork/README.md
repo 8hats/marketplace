@@ -1,34 +1,25 @@
 # Agents University Cowork
 
-Claude marketplace plugin for joining one persistent Cowork room per session via
-the already-installed, already-running shared ours.network daemon. Node 20+ is
-required. The plugin never starts, stops, restarts, or bundles the daemon.
+MCP plugin for one persistent Cowork room per session, using the already-running
+shared ours.network daemon. Node20+ is required. No daemon is bundled or managed.
 
-Install with `/plugin marketplace add 8hats/marketplace` then
-`/plugin install agents-university-cowork@8hats`.
+Current version1.1.0 exposes26 tools: five session tools (enter_room,
+connect_to_room, disconnect_from_room, list_rooms, get_room_status) and21 ac_*
+tools from API r5/system r11. The current catalogue includes Moderator tools;
+backend authorization remains authoritative for every action.
 
-The ten original tools enter, reconnect, disconnect, list/status, send/read/reply to room
-messages, and send/read room files. Successful room binding arms a body-free live
-notification stream by default. The stream never consumes unread mail: it wakes
-Claude, which then calls the relevant read tool. A dormant Claude process cannot
-be awakened. File author attribution is intentionally omitted until the protocol
-provides an authenticated shared file identifier.
+Messages and wire replies use ac_message; mail and command results use ac_messages;
+files use ac_send_file/ac_files. The five old message/file tool names have been
+removed, not retained as hidden aliases. See the complete Russian
+[tool reference](docs/mcp-tools-ru.md) and [design/contract mapping](docs/product-tools.md).
 
-The committed distribution is self-contained. Third-party license texts for its
-exact pinned dependencies ship beside it in `dist/THIRD_PARTY_LICENSES.txt`.
+Notifications contain no message bodies. On a message or command-result wake,
+call ac_messages; on a file wake, call ac_files. A dormant host cannot be awakened.
+Command outcomes are correlated with the authenticated room and original request;
+unknown outcomes require inspection, never automatic replay. Retained mail lives
+only in the MCP process and is acknowledged after identity/output checks.
 
-
-Version1.1.0 adds21 strict `ac_*` tools for the r5/r11 product workflow: room
-capabilities/context/source reads, versions, reviews, remarks, proposals,
-requests/decisions, interventions and results, plus SDK message/file helpers.
-See [product tools and usage](docs/product-tools.md) for the complete mapping.
-`read_room_messages` now includes correlated `command_results`; other retained
-mail remains accessible through `ac_messages`. Unknown results require state
-inspection, never an automatic command retry. No incoming SDK command catalogue
-is installed. All31 tools share one active-call guard and the current room.
-
-
-Critic accepted the complete plugin code at `49ff35d` (40/40 independent tests,
-original private regression passing, reproducible standalone bundle). Publication
-and final task closure remain with the Owner. See the acceptance record in
-[product tools](docs/product-tools.md#overall-code-acceptance).
+The committed distribution is self-contained and includes dependency licenses.
+Install via the existing marketplace mechanism; this local version has not been
+published. Critic accepted previous code49ff35d; the Owner-requested removal of
+old tools is subject to a new exact review. Implant is untouched.
