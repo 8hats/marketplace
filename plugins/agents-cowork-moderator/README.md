@@ -1,7 +1,7 @@
 # Agents Cowork Moderator
 
 Separate plugin for the Moderator assigned by the backend/Fleet setup.
-It exposes20 MCP tools:14 shared Personal Agent tools plus six Moderator-specific
+It exposes 20 MCP tools: 14 shared Personal Agent tools plus six Moderator-specific
 operations. It does not create, choose, remove or release identities, create
 room registries, redeem arbitrary invitations, or register incoming SDK commands.
 
@@ -25,7 +25,7 @@ Startup and tool calls verify the assigned identity. Shutdown stops this plugin'
 notification watch and MCP server; it does not release the integration's lease.
 No secrets or actual installation inputs are shipped in this public repository.
 
-Without inputs, discovery still lists20 tools; calls return not_connected.
+Without inputs, discovery still lists 20 tools; calls return not_connected.
 Invalid configured inputs or wrong startup identity fail visibly with a redacted
 error. No identity repair, forced binding, daemon lifecycle or automatic mutation
 retry is attempted. Backend room admission and current Moderator authorization
@@ -50,8 +50,9 @@ mail acknowledgement; unknown outcomes require inspection before a new command.
 
 ## Development
 
-From this directory: npm ci, npm run build, npm test. Build resolution includes
-this plugin's pinned node_modules for shared source imports. CI also checks
+First run `npm ci` in `../agents-university-cowork` for the shared source tests.
+Then, from this directory, run `npm ci`, `npm run build`, and `npm test`.
+Build resolution includes this plugin's pinned node_modules for shared source imports. CI also checks
 byte-identical rebuilds. Tests use mock bound clients and real MCP transports,
 including a configured standalone stdio bundle; they do not launch Fleet agents
 or touch a live daemon. This local candidate has not been published.
