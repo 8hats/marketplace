@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import test from 'node:test';
 
-test('the public surface is exactly the ten frozen tools', async () => {
+test('the ten legacy room tools remain registered alongside product tools', async () => {
   const source = await fs.readFile(new URL('../src/server.mjs', import.meta.url), 'utf8');
   const names = [...source.matchAll(/register\('([a-z_]+)'/g)].map((m) => m[1]);
   assert.deepEqual(names, [

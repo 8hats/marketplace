@@ -6,12 +6,15 @@ import path from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import {createProductTools} from './product-tools.mjs';
+import {ListToolsRequestSchema} from '@modelcontextprotocol/sdk/types.js';
+import {zodToJsonSchema} from 'zod-to-json-schema';
 import { CoworkSession } from './session.mjs';
 import { RoomRegistry } from './registry.mjs';
 import { MonitorManager } from './monitor-manager.mjs';
 import { parseRoomEnvelope } from './mcp/envelope.mjs';
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';
 const text = (data) => ({ content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data });
 const ok = (data) => text({ ok: true, data, request_id: randomUUID() });
 const fail = (code, message, retryable = false, action) => text({ ok: false, error: { code, message, retryable, ...(action ? { action } : {}) }, request_id: randomUUID() });
@@ -27,13 +30,16 @@ const SDK_CODES = new Map([
 const daemonFailure = (error) => error?.name === 'DaemonUnavailableError' || ['ECONNREFUSED', 'ECONNRESET', 'ENOENT'].includes(error?.code) || /fetch failed|daemon.*unavailable|connect ECONN/i.test(error?.message ?? '');
 const uploadTooLarge = (error) => /uploadFile\([^)]*\): upload is \d+ bytes, at or over the transport's \d+-byte envelope budget/i.test(error?.message ?? '');
 
-export async function createRuntime({ session = new CoworkSession(), server: injectedServer, registry: injectedRegistry } = {}) {
+export async function createRuntime({ session = new CoworkSession(), server: injectedServer, registry: injectedRegistry, productOptions } = {}) {
   const registry = injectedRegistry ?? new RoomRegistry(session.selection.expectStateDir);
   await registry.init();
   await registry.list();
   const server = injectedServer ?? new McpServer({ name: 'agents-university-cowork', version: VERSION }, { capabilities: { logging: {} }, instructions: 'Bind one Cowork room; valid live wakes should be followed by the matching room read tool.' });
   const monitor = new MonitorManager({ server, registry });
 
+  const product = createProductTools(session,productOptions);
+  const definitions=[];let busy=false;
+  const exclusive=fn=>async args=>{if(busy)return {isError:true,content:[{type:'text',text:JSON.stringify({code:'invalid_state',effect:'none',message:'Another room tool is active.'})}]};busy=true;try{return await fn(args);}finally{busy=false;}};
   const bound = () => session.bound;
   const identitySessions = (identities) => new Map(identities.filter((item) => 'session' in item).map((item) => [item.name, item.session]));
   const publicRoom = (row, sessions) => {
@@ -60,10 +66,10 @@ export async function createRuntime({ session = new CoworkSession(), server: inj
       return fail(code, message, code === 'daemon_unavailable');
     }
   };
-  const register = (name, description, inputSchema, fn, readOnly = false) => server.registerTool(name, {
+  const register = (name, description, inputSchema, fn, readOnly = false) => { definitions.push({name,description,inputSchema:z.object(inputSchema)});return server.registerTool(name, {
     description, inputSchema,
     annotations: { readOnlyHint: readOnly, destructiveHint: false, idempotentHint: readOnly, openWorldHint: false }
-  }, handler(fn));
+  }, exclusive(handler(fn))); };
 
   register('enter_room', 'Enter a Cowork room from an invite as a persistent exact agent identity.', {
     invite: z.string().min(1), as_agent: z.string().min(1).max(128)
@@ -127,13 +133,7 @@ export async function createRuntime({ session = new CoworkSession(), server: inj
   });
 
   register('read_room_messages', 'Drain the oldest unread room messages and hide non-room content.', { limit: z.number().int().min(1).max(200).optional() }, async ({ limit = 50 }) => {
-    const row = requireBound(); const payload = await (await session.ensureAttached()).getMessages({ limit }); const messages = [];
-    for (const item of payload.messages) {
-      if (item.from?.id !== row.contact_cid) continue; const envelope = parseRoomEnvelope(item.body ?? item.text, row.room_name);
-      if (!envelope || envelope.kind !== 'room_msg') continue;
-      messages.push({ message_id: envelope.message_id, author: envelope.author, text: envelope.text, time: envelope.at ?? item.date, kind: envelope.kind });
-    }
-    return ok({ messages, remaining: payload.remaining });
+    requireBound();return await product.readLegacy(limit,ok);
   });
 
   register('reply_to_room_message', 'Reply to a room message still available in SDK history.', { message_id: z.string().min(1), text: z.string().min(1).max(100000) }, async ({ message_id, text: body }) => {
@@ -163,6 +163,14 @@ export async function createRuntime({ session = new CoworkSession(), server: inj
     }));
     return ok({ files, remaining: payload.remaining });
   });
+
+  for(const tool of product.descriptors.values()){
+    definitions.push(tool);
+    server.registerTool(tool.name,{description:tool.description,inputSchema:z.object({}).passthrough(),annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true}},exclusive(args=>product.execute(tool.name,args)));
+  }
+  // Advertise full strict union/refinement schemas, while executors validate the
+  // original Zod schema rather than a permissive MCP raw-shape conversion.
+  if(server.server)server.server.setRequestHandler(ListToolsRequestSchema,async()=>({tools:definitions.map(tool=>({name:tool.name,description:tool.description,inputSchema:{...zodToJsonSchema(tool.inputSchema,{$refStrategy:'none'}),type:'object'}}))}));
 
   return { server, session, registry, monitor, shutdown: async () => { monitor.stop(); await session.release(); } };
 }

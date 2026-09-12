@@ -16,7 +16,7 @@ const watcher = async function * ({ signal } = {}) { await new Promise((resolve)
 function client(overrides = {}) {
   const calls = []; let roleExists = false; let roleSession = null;
   return { calls,
-    async listIdentities() { return [{ name: 'Human', kind: 'root', session: null }, ...(roleExists ? [{ name: 'Tutor', kind: 'role', session: roleSession }] : [])]; }, async createIdentity(v) { calls.push(['createIdentity', v]); roleExists = true; roleSession = 'mine'; },
+    async currentIdentity() { return {name:'Tutor',cid:'C'.repeat(64)}; }, async listIdentities() { return [{ name: 'Human', kind: 'root', session: null }, ...(roleExists ? [{ name: 'Tutor', kind: 'role', session: roleSession }] : [])]; }, async createIdentity(v) { calls.push(['createIdentity', v]); roleExists = true; roleSession = 'mine'; },
     async addContact() { calls.push(['addContact']); return { cid: CID, display: 'Room' }; }, async removeContact(v) { calls.push(['removeContact', v]); }, async removeIdentity(v) { calls.push(['removeIdentity', v]); },
     async chooseIdentity(v) { calls.push(['chooseIdentity', v]); roleExists = true; roleSession = 'mine'; }, async listContacts() { return { contacts: [{ container_id: CID }], pending: [] }; },
     async releaseLease() { calls.push(['releaseLease']); roleSession = null; }, async listIncomingMessages() { return []; }, async listIncomingFiles() { return []; }, watchNotifications: watcher,
@@ -36,10 +36,10 @@ function registry(initial = []) {
 function session(c) { return { selection: { expectStateDir: '/fake' }, client: c, bound: null, async ensureAttached() { return this.client; }, async release() { this.bound = null; await c.releaseLease(); } }; }
 const data = (result) => { assert.equal(result.structuredContent.ok, true, JSON.stringify(result.structuredContent)); return result.structuredContent.data; };
 
-test('all ten registered handlers execute success schemas against SDK 3.6.0 shapes', async () => {
+test('all ten legacy handlers execute success schemas against SDK 3.7.2 shapes', async () => {
   const source = await fs.mkdtemp(path.join(os.tmpdir(), 'cowork-handler-')); const file = path.join(source, 'a.txt'); await fs.writeFile(file, 'ok');
   const c = client(); c.getFiles = async (v) => { c.calls.push(['getFiles', v]); return { files: [{ wire_id: WIRE, from: { id: CID }, filename: 'a.txt', mime: 'text/plain', size: 2, date: 'now', path: file }], remaining: 0 }; }; const s = session(c); const srv = new FakeServer(); const reg = registry(); const runtime = await createRuntime({ session: s, server: srv, registry: reg });
-  assert.equal(srv.tools.size, 10);
+  assert.equal(srv.tools.size, 31);
   data(await srv.tools.get('enter_room').fn({ invite: 'invite', as_agent: 'Tutor' }));
   let listed = data(await srv.tools.get('list_rooms').fn({})).rooms[0]; assert.equal(listed.status, 'connected'); assert.equal(listed.membership_state, 'ready'); assert.equal(listed.bind_state, 'bound_here');
   assert.equal(data(await srv.tools.get('get_room_status').fn({})).status, 'connected');

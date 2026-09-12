@@ -1,4 +1,4 @@
-# Frozen implementation contract
+# Original room/session contract
 
 Normative inputs are the accepted v1 product specification SHA-256
 `24214601a6326326313a81ddf87c8b2a784f7e5b26c53ed5f3e77c021721caf9`,
@@ -13,7 +13,7 @@ tarball SHA-1 `389518ac2ff4fb739420ca86aae80baac0511165`, license
 `FSL-1.1-Apache-2.0`. Its exact published declarations were inspected for every
 used identity/contact/message/file/history/notification method.
 
-There are exactly ten public tools. One stdio process binds at most one room.
+The original surface has ten tools; the r5/r11 extension adds21, as documented in [product tools](product-tools.md). One stdio process binds at most one room.
 `as_agent` is the exact persistent identity name. Received files deliberately
 omit room-author attribution until backlog capability gap `0mtcryued89400a4f`
 adds a shared authenticated cross-protocol file identifier.
@@ -36,3 +36,5 @@ exactly `unbound`, `bound_here`, or `bound_elsewhere`. Public room `status` is
 
 `dist/THIRD_PARTY_LICENSES.txt` contains the exact license texts for all pinned
 dependencies bundled into the self-contained runtime.
+
+The product extension upgrades the pinned SDK to3.7.2; the3.6.0 provenance above records the original implementation. Current lockfile is authoritative.
