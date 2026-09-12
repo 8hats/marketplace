@@ -32,7 +32,7 @@ export async function createRuntime({ session = new CoworkSession(), server: inj
   const server = injectedServer ?? new McpServer({ name: 'agents-university-cowork', version: VERSION }, { capabilities: { logging: {} }, instructions: 'Connect one Cowork room. On message or command-result wakes call ac_messages; on file wakes call ac_files. Send text and wire replies with ac_message. Inspect unknown command outcomes before any deliberate new action.' });
   const monitor = new MonitorManager({ server, registry });
 
-  const product = createProductTools(session,productOptions);
+  const product = createProductTools(session,{...productOptions,profile:'personal'});
   const definitions=[];let busy=false;
   const exclusive=fn=>async args=>{if(busy)return {isError:true,content:[{type:'text',text:JSON.stringify({code:'invalid_state',effect:'none',message:'Another room tool is active.'})}]};busy=true;try{return await fn(args);}finally{busy=false;}};
   const bound = () => session.bound;

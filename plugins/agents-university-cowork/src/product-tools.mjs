@@ -5,9 +5,10 @@ import {DomainError,fail} from './product/errors.mjs';
 const consumers=new Set(Object.keys(consumerCommands).map(name=>name.replace('consumer.','').replaceAll('.','_')));
 const encode=value=>({content:[{type:'text',text:JSON.stringify(value??null)}]});
 const bounded=value=>{const result=encode(value);if(Buffer.byteLength(JSON.stringify(result))>4*1024*1024)fail(413,'payload_too_large','Output is too large; inspect retained mail.');return result;};
-export function createProductTools(session,{timeoutMs=5000,pollMs=20}={}) {
+const moderatorTools=new Set(['ac_request_route','ac_review_publish','ac_publication_propose','ac_intervention_record','ac_stage_explain','ac_result_create']);
+export function createProductTools(session,{timeoutMs=5000,pollMs=20,profile='personal'}={}) {
  const retained=new Map();const descriptors=new Map();
- registerAgentTools(tool=>descriptors.set(tool.name,tool),{}, {roomCid:'0'.repeat(64),timeoutMs,pollMs});
+ registerAgentTools(tool=>{if(profile==='moderator'||!moderatorTools.has(tool.name))descriptors.set(tool.name,tool);},{}, {roomCid:'0'.repeat(64),timeoutMs,pollMs});
  async function context(){
   const row=session.bound;if(!row)fail(409,'not_connected','Connect to a room first.');
   const client=await session.ensureAttached(),identity=await client.currentIdentity();
@@ -34,7 +35,7 @@ export function createProductTools(session,{timeoutMs=5000,pollMs=20}={}) {
  async function execute(name,input={}) {
   let invoked=false;
   try {
-   const descriptor=descriptors.get(name);const parsed=descriptor.inputSchema.parse(input);
+   const descriptor=descriptors.get(name);if(!descriptor)fail(400,'invalid_request','Tool is not available in this plugin.');const parsed=descriptor.inputSchema.parse(input);
    if(Buffer.byteLength(JSON.stringify(parsed))>limits.json_bytes&&name!=='ac_send_file')fail(413,'payload_too_large','Arguments exceed the room command limit.');
    const ctx=await context();
    let value;invoked=true;

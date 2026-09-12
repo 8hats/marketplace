@@ -9,9 +9,9 @@ function fixture(overrides={}) {
  const session={bound:row,selection:{},ensureAttached:async()=>sdk,release:async()=>{session.bound=null;}};
  return {tools,server,row,sdk,session,registry:{init:async()=>{},list:async()=>[]},counts:()=>({sends,reads})};
 }
-test('plugin advertises all21 strict ac tools and correlates one actual room command',async()=>{
+test('plugin advertises 15 strict Personal Agent ac tools and correlates one actual room command',async()=>{
  const f=fixture();const runtime=await createRuntime(f);try{
- assert.equal(f.tools.size,26);assert.equal(f.tools.has('ac_request_decide'),true);
+ assert.equal(f.tools.size,20);assert.equal(f.tools.has('ac_request_decide'),true);
  const result=await f.tools.get('ac_read').fn({kind:'room'});assert.equal(JSON.parse(result.content[0].text).status,'committed');assert.deepEqual(f.counts(),{sends:1,reads:1});
  const invalid=await f.tools.get('ac_read').fn({kind:'room',actor_id:'forged'});assert.equal(invalid.isError,true);assert.deepEqual(f.counts(),{sends:1,reads:1});
  }finally{await runtime.shutdown();}
@@ -35,7 +35,7 @@ test('one active tool prevents disconnect; changed identity retains completed re
 test('actual MCP client sees strict union schemas and executes plugin tools',async()=>{
  const {Client}=await import('@modelcontextprotocol/sdk/client/index.js');const {InMemoryTransport}=await import('@modelcontextprotocol/sdk/inMemory.js');
  const f=fixture(),runtime=await createRuntime({...f,server:undefined}),client=new Client({name:'host-test',version:'1'});const [a,b]=InMemoryTransport.createLinkedPair();
- try{await runtime.server.connect(a);await client.connect(b);const tools=(await client.listTools()).tools;assert.equal(tools.length,26);assert.ok(tools.every(tool=>tool.inputSchema.type==='object'));for(const name of ['send_room_message','read_room_messages','reply_to_room_message','send_room_file','read_room_files']){assert.equal(tools.some(tool=>tool.name===name),false);assert.equal((await client.callTool({name,arguments:{}})).isError,true);}assert.ok(tools.find(tool=>tool.name==='ac_request_decide').inputSchema.anyOf);
+ try{await runtime.server.connect(a);await client.connect(b);const tools=(await client.listTools()).tools;assert.equal(tools.length,20);assert.ok(tools.every(tool=>tool.inputSchema.type==='object'));for(const name of ['send_room_message','read_room_messages','reply_to_room_message','send_room_file','read_room_files','ac_request_route','ac_review_publish','ac_publication_propose','ac_intervention_record','ac_stage_explain','ac_result_create']){assert.equal(tools.some(tool=>tool.name===name),false);assert.equal((await client.callTool({name,arguments:{}})).isError,true);}assert.ok(tools.find(tool=>tool.name==='ac_request_decide').inputSchema.anyOf);
  const result=await client.callTool({name:'ac_read',arguments:{kind:'room'}});assert.equal(JSON.parse(result.content[0].text).status,'committed');
  assert.equal((await client.callTool({name:'ac_read',arguments:{kind:'room',unexpected:true}})).isError,true);
  }finally{await client.close();await runtime.shutdown();await runtime.server.close();}

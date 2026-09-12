@@ -10,6 +10,6 @@ assert.equal(await fs.stat(path.join(dir,'node_modules')).then(()=>true,()=>fals
 const transport=new StdioClientTransport({command:process.execPath,args:[target],env:{...process.env,HOME:dir,OURS_STATE_DIR:path.join(dir,'ours')},stderr:'pipe'});
 const client=new Client({name:'standalone-bundle-test',version:'1'});
 try{
- await client.connect(transport);const list=await client.listTools();assert.equal(list.tools.length,26);
+ await client.connect(transport);const list=await client.listTools();assert.equal(list.tools.length,20);
  const result=await client.callTool({name:'ac_read',arguments:{kind:'room'}});assert.equal(result.isError,true);assert.equal(JSON.parse(result.content[0].text).code,'not_connected');
 }finally{await client.close();await transport.close();await fs.rm(dir,{recursive:true,force:true});}

@@ -1,6 +1,6 @@
 # Product room tools: API r5 / system r11
 
-Owner's 2026-09-12 request extends **agents-university-cowork** only. Owner #347 removes the five old message/file tools; the five session tools remain. The plugin now provides all21 local ac_*
+Owner's 2026-09-12 request extends **agents-university-cowork** only. Owner #347 removes the five old message/file tools; the five session tools remain. The shared executor library provides all21 local ac_*
 tools specified by API r5 section4. No incoming SDK commands are defined by the
 MVP; `registerCommands` is never used to call room consumers.
 
@@ -108,3 +108,13 @@ ac_send_file/ac_files for artifacts. MCP instructions now name those tools for
 notification handling. ac_join and Moderator presentation are unchanged by this
 specific instruction. Current public surface is pending exact re-review;
 the acceptance recorded above applies to the previous31-tool candidate.
+
+
+## Personal Agent separation (#351)
+
+The existing plugin is now Personal Agent only: five session tools plus the15
+base r11 section7.2 ac_* tools. The six Moderator-specific tools are excluded
+both from MCP discovery and direct invocation through the adapter. Profile is
+fixed by the plugin runtime, not supplied by MCP callers. Shared executors remain
+reusable for the separate Moderator plugin; backend authority is independent.
+This20-tool surface supersedes the intermediate26-tool count above.

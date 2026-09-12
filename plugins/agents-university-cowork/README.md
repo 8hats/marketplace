@@ -3,10 +3,9 @@
 MCP plugin for one persistent Cowork room per session, using the already-running
 shared ours.network daemon. Node20+ is required. No daemon is bundled or managed.
 
-Current version1.1.0 exposes26 tools: five session tools (enter_room,
-connect_to_room, disconnect_from_room, list_rooms, get_room_status) and21 ac_*
-tools from API r5/system r11. The current catalogue includes Moderator tools;
-backend authorization remains authoritative for every action.
+Current version1.1.0 exposes20 tools: five session tools (enter_room,
+connect_to_room, disconnect_from_room, list_rooms, get_room_status) and15 ac_*
+tools from API r5/system r11. This plugin serves Personal Agents only; six Moderator-specific tools are absent and cannot be called through it. Backend authorization remains authoritative.
 
 Messages and wire replies use ac_message; mail and command results use ac_messages;
 files use ac_send_file/ac_files. The five old message/file tool names have been

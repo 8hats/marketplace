@@ -1,6 +1,7 @@
 ## 1.1.0 — product room commands
 
-- Add all21 r5/r11 ac_* tools and retain five persistent session tools.
+- Expose15 Personal Agent ac_* tools and retain five persistent session tools.
+- Exclude six Moderator tools from discovery and invocation; Moderator becomes a separate plugin.
 - Remove five old message/file tools per Owner decision; no hidden aliases.
 - Read bounded retained mail and command results through ac_messages.
 - Check current identity, serialize calls and preserve unknown outcomes without resend.
