@@ -1,6 +1,6 @@
 {
-  "name": "@agents-university/cowork-plugin",
-  "version": "1.1.0",
+  "name": "@agents-university/cowork-moderator-plugin",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "engines": {

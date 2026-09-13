@@ -59,3 +59,9 @@ test('dedupe survives transient cursor-zero retries and distinct unread wires wa
   await new Promise((resolve) => setTimeout(resolve, 550)); monitor.stop();
   assert.equal(attempts, 2); assert.deepEqual(pushed.map((item) => item.wire_id), [WIRE, wire2]);
 });
+test('typed room command results wake without body or unread consumption',async()=>{
+ const pushed=[];const monitor=new MonitorManager({server:{sendLoggingMessage:value=>pushed.push(JSON.parse(value.data))},registry:{}});
+ const client={listContacts:async()=>({contacts:[{container_id:CID}]}),getHistoryItem:async()=>({message_kind:'command_result',direction:'in',from:{id:CID},body:'private result'})};
+ assert.equal(await monitor.handle(client,{...row,membership_state:'ready'},{event:'message_received',sender_id:CID,wire_id:WIRE}),true);
+ assert.equal(pushed[0].event,'room_command_result_available');assert.doesNotMatch(JSON.stringify(pushed),/private result|body/);
+});

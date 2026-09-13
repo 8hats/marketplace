@@ -10,7 +10,7 @@ const read = async (p) => JSON.parse(await fs.readFile(new URL(p, import.meta.ur
 test('package, Claude, and Codex manifests agree', async () => {
   const [pkg, claude, codex] = await Promise.all([read('../package.json'), read('../.claude-plugin/plugin.json'), read('../.codex-plugin/plugin.json')]);
   assert.equal(claude.name, 'agents-university-cowork'); assert.equal(codex.name, claude.name); assert.equal(pkg.version, claude.version); assert.equal(codex.version, claude.version);
-  assert.equal(pkg.dependencies['@ours.network/sdk'], '3.6.0');
+  assert.equal(pkg.dependencies['@ours.network/sdk'], '3.7.2');
 });
 
 test('the distributable carries exact pinned third-party license texts', async () => {

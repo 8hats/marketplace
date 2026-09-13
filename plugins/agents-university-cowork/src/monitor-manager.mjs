@@ -54,6 +54,9 @@ export class MonitorManager {
     }
     const wireId = event.wire_id; if (!wireId) return false;
     const item = await client.getHistoryItem({ wire_id: wireId });
+    if(item?.message_kind==='command_result'&&item.direction==='in'&&item.from?.id===row.contact_cid){
+      pushWake(this.server,{room_name:row.room_name,event:'room_command_result_available',wire_id:wireId,sender_cid:row.contact_cid});return true;
+    }
     const envelope = parseRoomEnvelope(item?.body ?? item?.text ?? '', row.room_name);
     if (!envelope || envelope.kind !== 'room_msg') return false;
     const live = row.membership_state === 'connecting' ? await this.registry.updateState(row.room_name, 'ready') : row;
