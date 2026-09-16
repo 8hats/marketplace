@@ -1,0 +1,11 @@
+[
+  "@modelcontextprotocol/sdk",
+  "@ours.network/sdk",
+  "ajv",
+  "ajv-formats",
+  "fast-deep-equal",
+  "fast-uri",
+  "json-schema-traverse",
+  "zod",
+  "zod-to-json-schema"
+]

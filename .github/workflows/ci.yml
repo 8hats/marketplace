@@ -147,24 +147,27 @@ jobs:
           cd plugins/bios-implant
           node --test
 
-      - name: Agents University Cowork install, test, and reproducible bundle
+      - name: Install both Cowork source-test dependencies
         run: |
-          cd plugins/agents-university-cowork
-          npm ci
+          npm ci --prefix plugins/au-cowork-personal
+          npm ci --prefix plugins/au-cowork-moderator
+
+      - name: AU Cowork Personal install, test, and reproducible bundle
+        run: |
+          cd plugins/au-cowork-personal
           npm test
           npm run build
           git diff --exit-code -- dist
 
       - name: Moderator plugin install, test, and reproducible bundle
         run: |
-          cd plugins/agents-cowork-moderator
-          npm ci
+          cd plugins/au-cowork-moderator
           npm test
           npm run build
           git diff --exit-code -- dist
 
-      - name: Agents University Cowork clean bundle smoke
-        run: node plugins/agents-university-cowork/test/dist-smoke.mjs
+      - name: AU Cowork Personal clean bundle smoke
+        run: node plugins/au-cowork-personal/test/dist-smoke.mjs
 
       - name: npm-sourced plugins resolve on the registry
         run: |
