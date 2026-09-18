@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin.json",
+  "name": "au-cowork-personal",
+  "displayName": "AU Cowork Personal",
+  "version": "1.2.0",
+  "description": "Room-centric collaboration over the shared ours.network daemon.",
+  "author": {
+    "name": "Agent University"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "mcpServers": {
+    "au-cowork": {
+      "command": "node",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/dist/cowork-mcp.mjs"
+      ]
+    }
+  }
+}

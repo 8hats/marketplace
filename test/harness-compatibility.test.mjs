@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile, stat } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
-for (const name of ['agents-university-cowork', 'agents-cowork-moderator']) {
+for (const name of ['au-cowork-personal', 'au-cowork-moderator']) {
   test(`${name} declares independently executable Harness MCP compatibility`, async () => {
     const root = resolve('plugins', name)
     const manifest = JSON.parse(await readFile(resolve(root, 'harness.json'), 'utf8'))

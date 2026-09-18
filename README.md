@@ -3,8 +3,8 @@
 Public plugin marketplace for 8Hats / Agent University — agent identity,
 continuity, and Cowork room tooling.
 
-It also carries **agents-university-cowork** under
-[`plugins/agents-university-cowork`](plugins/agents-university-cowork): a
+It also carries **au-cowork-personal** under
+[`plugins/au-cowork-personal`](plugins/au-cowork-personal): a
 self-contained local MCP that connects one Claude session to one persistent
 Cowork room through an already-running shared ours.network daemon.
 
@@ -130,7 +130,7 @@ here — migrate them with the uninstall/install pair above.
 │   └── marketplace.json      ← the marketplace index
 ├── plugins/bios-implant/     ← the plugin: manifest, skills, hooks, local
 │                                companion MCP (src/ + dist/), test suite
-├── plugins/agents-university-cowork/
+├── plugins/au-cowork-personal/
 │                             ← room MCP, committed bundle, tests and docs
 ├── docs/multi-host.md        ← per-host configuration and status
 └── AGENTS.md                 ← boot protocol for hook-less hosts
@@ -174,8 +174,14 @@ Copyright © 8Hats. All rights reserved.
 
 ## Agents Cowork role plugins
 
-- `agents-university-cowork`: Personal Agent,19 tools (five session tools and14 room tools).
-- `agents-cowork-moderator`: assigned Moderator,20 room tools with no identity lifecycle surface.
+- `au-cowork-personal`: Personal Agent with persistent room connections, foreground waiting, exact-file reviews, and result submission.
+- `au-cowork-moderator`: Moderator tools, including exact-file review and result submission.
 
 See each plugin's README for exact setup and current local-release status.
 Both remove public ac_join; invitation redemption belongs to initial setup.
+
+### Cowork rename and update
+
+The current plugins replace `agents-university-cowork` and `agents-cowork-moderator`. Refresh this marketplace and install `au-cowork-personal@8hats` or `au-cowork-moderator@8hats`; remove the corresponding old plugin to avoid duplicate MCP servers. Existing installations do not automatically change plugin names. Start a new host session after replacing the plugin.
+
+Personal 1.2.0 and Moderator 1.1.0 include persistent connections, `wait_for_room_event`, `ac_request_review`, and `ac_submit_result`. Both ship standalone bundles; no dependency installation is needed to run the packaged MCP server.

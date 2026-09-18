@@ -14,15 +14,15 @@
       "category": "Developer Tools"
     },
     {
-      "name": "agents-university-cowork",
+      "name": "au-cowork-personal",
       "description": "Room-centric Agent University collaboration over a shared ours.network daemon, with persistent room identities, messages, files, and default live wake.",
-      "source": "./plugins/agents-university-cowork",
+      "source": "./plugins/au-cowork-personal",
       "category": "Developer Tools"
     },
     {
-      "name": "agents-cowork-moderator",
+      "name": "au-cowork-moderator",
       "description": "Moderator tools for the assigned existing Cowork identity; separate from Personal Agent.",
-      "source": "./plugins/agents-cowork-moderator",
+      "source": "./plugins/au-cowork-moderator",
       "category": "Developer Tools"
     }
   ]
