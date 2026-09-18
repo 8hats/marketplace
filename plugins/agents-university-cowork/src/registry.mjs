@@ -16,7 +16,7 @@ export function normalizeRoomName(value) {
 const hash = (value) => createHash('sha256').update(value, 'utf8').digest('hex');
 
 export class RoomRegistry {
-  constructor(stateDir, { appHome = path.join(os.homedir(), '.agents-university-cowork') } = {}) {
+  constructor(stateDir, { appHome = process.env.AC_HOME || path.join(os.homedir(), '.agents-university-cowork') } = {}) {
     this.appHome = appHome; this.profileRoot = path.join(appHome, hash(path.resolve(stateDir)));
     this.root = path.join(this.profileRoot, 'rooms');
   }

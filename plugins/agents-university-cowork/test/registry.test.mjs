@@ -25,3 +25,13 @@ test('registry separates daemon profiles and fails closed on corruption', async 
   await fs.writeFile(one.fileFor('Room'), '{}');
   await assert.rejects(one.get('Room'), /room_registry_corrupt/);
 });
+
+test('host can select private plugin storage without changing the OS home', () => {
+  const prior = process.env.AC_HOME;
+  try {
+    process.env.AC_HOME = '/harness/private/cowork';
+    assert.equal(new RoomRegistry('/daemon').appHome, '/harness/private/cowork');
+  } finally {
+    if (prior === undefined) delete process.env.AC_HOME; else process.env.AC_HOME = prior;
+  }
+});

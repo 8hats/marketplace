@@ -22,3 +22,5 @@ The committed distribution is self-contained and includes dependency licenses.
 Install via the existing marketplace mechanism; this local version has not been
 published. Critic accepted previous code49ff35d; the Owner-requested removal of
 old tools is subject to a new exact review. Implant is untouched.
+
+Hosts may set `AC_HOME` to keep plugin room metadata in their own private application storage. Without it, the existing user-home location is used.
