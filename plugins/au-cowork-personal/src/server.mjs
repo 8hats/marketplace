@@ -10,11 +10,13 @@ import {ListToolsRequestSchema} from '@modelcontextprotocol/sdk/types.js';
 import {zodToJsonSchema} from 'zod-to-json-schema';
 import {ConnectionRegistry,connectionView} from './connections.mjs';
 import { connectInvite, reconnectInvite, markReady } from './invite-session.mjs';
+import { remoteDiagnostic } from './remote-config.mjs';
+import { sessionRegistry } from './session-registries.mjs';
 import { CoworkSession } from './session.mjs';
 import { RoomRegistry } from './registry.mjs';
 import { MonitorManager } from './monitor-manager.mjs';
 
-export const VERSION = '1.2.0';
+export const VERSION = '1.3.0';
 const text = (data) => ({ content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data });
 const ok = (data) => text({ ok: true, data, request_id: randomUUID() });
 const fail = (code, message, retryable = false, action) => text({ ok: false, error: { code, message, retryable, ...(action ? { action } : {}) }, request_id: randomUUID() });
@@ -30,10 +32,9 @@ const daemonFailure = (error) => error?.name === 'DaemonUnavailableError' || ['E
 const uploadTooLarge = (error) => /uploadFile\([^)]*\): upload is \d+ bytes, at or over the transport's \d+-byte envelope budget/i.test(error?.message ?? '');
 
 export async function createRuntime({ session = new CoworkSession(), server: injectedServer, registry: injectedRegistry, connections: injectedConnections, productOptions } = {}) {
-  const connections=injectedConnections??session.connections??(session.selection.expectStateDir?new ConnectionRegistry(session.selection.expectStateDir):undefined);session.connections=connections;
-  const registry = injectedRegistry ?? new RoomRegistry(session.selection.expectStateDir);
-  await registry.init();
-  await registry.list();
+  const connections=injectedConnections??session.connections??sessionRegistry(session,ConnectionRegistry,['init','list','get','reserve','update']);session.connections=connections;
+  const registry=injectedRegistry??sessionRegistry(session,RoomRegistry,['init','list','get','create','updateState']);
+  if(injectedRegistry){await registry.init();await registry.list();}
   const server = injectedServer ?? new McpServer({ name: 'au-cowork-personal', version: VERSION }, { capabilities: { logging: {} }, instructions: monitorInstructions });
   const monitor = new MonitorManager({ server, registry });
 
@@ -59,6 +60,7 @@ export async function createRuntime({ session = new CoworkSession(), server: inj
   const handler = (fn) => async (args) => {
     try { return await fn(args ?? {}); }
     catch (error) {
+      const remote=remoteDiagnostic(error);if(remote){const result=fail(remote.code,remote.message,['remote_unavailable','daemon_setup_required'].includes(remote.code));if(error.connection_id){Object.assign(result.structuredContent.error,{connection_id:error.connection_id,identity_name:error.identity_name,identity_retained:error.identity_retained});return text(result.structuredContent);}return result;}
       const candidate = SDK_CODES.get(error?.code) ?? (PUBLIC_CODES.has(error?.code) ? error.code : uploadTooLarge(error) ? 'file_too_large' : daemonFailure(error) ? 'daemon_unavailable' : 'internal_error');
       const code = PUBLIC_CODES.has(candidate) ? candidate : 'internal_error';
       const message = code === 'daemon_unavailable' ? 'The shared ours daemon is unavailable; ask the operator to start it, then retry.'
@@ -148,7 +150,9 @@ export async function createRuntime({ session = new CoworkSession(), server: inj
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
   const runtime = await createRuntime().catch(async (error) => {
-    const fallback = new McpServer({ name: 'au-cowork-personal', version: VERSION }, { instructions: 'Cowork is unavailable. Ask the operator to verify that the shared ours daemon is running, then retry.' });
+    const diagnostic=remoteDiagnostic(error)?.message??'Cowork is unavailable. Ask the operator to verify the daemon configuration and service.';
+    process.stderr.write(diagnostic+'\n');
+    const fallback = new McpServer({ name: 'au-cowork-personal', version: VERSION }, { instructions: diagnostic });
     await fallback.connect(new StdioServerTransport()); return null;
   });
   if (runtime) {

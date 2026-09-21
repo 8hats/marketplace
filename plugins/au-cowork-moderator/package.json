@@ -1,10 +1,10 @@
 {
   "name": "@au-cowork/moderator-plugin",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "node build.mjs",
@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
-    "@ours.network/sdk": "3.7.2",
+    "@ours.network/sdk": "3.8.1-nightly.9",
     "zod": "3.25.76",
     "zod-to-json-schema": "3.25.1"
   },

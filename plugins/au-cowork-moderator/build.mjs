@@ -9,7 +9,7 @@ const result = await build({
   bundle: true,
   nodePaths: [new URL('./node_modules/', import.meta.url).pathname],
   platform: 'node',
-  target: 'node20',
+  target: 'node22',
   format: 'esm',
   minify: true,
   metafile: true,

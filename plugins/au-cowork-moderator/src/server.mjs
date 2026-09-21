@@ -10,6 +10,8 @@ import {createProductTools} from '../../au-cowork-personal/src/product-tools.mjs
 import {MonitorManager} from '../../au-cowork-personal/src/monitor-manager.mjs';
 
 import {ForegroundWait,waitSchema,waitDescriptor,waitResult,monitorInstructions} from '../../au-cowork-personal/src/foreground-wait.mjs';
+import {remoteDiagnostic} from '../../au-cowork-personal/src/remote-config.mjs';
+import {sessionRegistry} from '../../au-cowork-personal/src/session-registries.mjs';
 import {CoworkSession} from '../../au-cowork-personal/src/session.mjs';
 import {ConnectionRegistry,connectionView} from '../../au-cowork-personal/src/connections.mjs';
 import {connectInvite,reconnectInvite} from '../../au-cowork-personal/src/invite-session.mjs';
@@ -17,9 +19,9 @@ import {connectInvite,reconnectInvite} from '../../au-cowork-personal/src/invite
 const cid=z.string().regex(/^[a-fA-F0-9]{64}$/);
 const configuration=z.object({identityName:z.string().min(1),identityCid:cid,roomCid:cid,roomName:z.string().min(1),monitor:z.boolean().optional()});
 export async function createRuntime({inputs,session: suppliedSession,connections:injectedConnections}={}){
- const server=new Server({name:'au-cowork-moderator',version:'1.1.0'},{capabilities:{tools:{},logging:{}},instructions:monitorInstructions});
+ const server=new Server({name:'au-cowork-moderator',version:'1.2.0'},{capabilities:{tools:{},logging:{}},instructions:monitorInstructions});
  let session=inputs?null:(suppliedSession??new CoworkSession());
- if(!inputs)session.connections=injectedConnections??new ConnectionRegistry(session.selection.expectStateDir);
+ if(!inputs)session.connections=injectedConnections??session.connections??sessionRegistry(session,ConnectionRegistry,['init','list','get','reserve','update']);
  const monitor=new MonitorManager({server,registry:{}});
  if(inputs){
   const config=configuration.parse(inputs),sdk=inputs.client;
@@ -47,7 +49,7 @@ export async function createRuntime({inputs,session: suppliedSession,connections
      else if(tool.name==='list_rooms'){data={rooms:(await session.connections.list('moderator')).map(connectionView)};}
      else {monitor?.stop();await session.release();data={status:'disconnected'};}
      return {content:[{type:'text',text:JSON.stringify({ok:true,data})}]};
-    }catch(error){return {isError:true,content:[{type:'text',text:JSON.stringify({ok:false,error:{code:error instanceof z.ZodError?'invalid_request':(['session_already_bound','invite_already_attempted','identity_in_use','identity_mismatch','room_contact_missing','connection_not_found','connection_outcome_unresolved','connection_registry_unsafe','connection_registry_unavailable'].includes(error.code)?error.code:'connection_failed'),...(error.connection_id?{connection_id:error.connection_id,identity_name:error.identity_name,identity_retained:error.identity_retained}:{}),message:'Connection did not complete. Inspect admission before attempting another session.'}})}]};}
+    }catch(error){return {isError:true,content:[{type:'text',text:JSON.stringify({ok:false,error:{...(remoteDiagnostic(error)??{code:error instanceof z.ZodError?'invalid_request':(['session_already_bound','invite_already_attempted','identity_in_use','identity_mismatch','room_contact_missing','connection_not_found','connection_outcome_unresolved','connection_registry_unsafe','connection_registry_unavailable'].includes(error.code)?error.code:'connection_failed'),...(error.connection_id?{connection_id:error.connection_id,identity_name:error.identity_name,identity_retained:error.identity_retained}:{}),message:'Connection did not complete. Inspect admission before attempting another session.'}),...(error.connection_id?{connection_id:error.connection_id,identity_name:error.identity_name,identity_retained:error.identity_retained}:{})}})}]};}
    }
    return await product.execute(request.params.name,request.params.arguments??{});
   }finally{busy=false;}
@@ -62,5 +64,5 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   runtime=await createRuntime({inputs});await runtime.server.connect(new StdioServerTransport());
   let closing=false;const close=async()=>{if(closing)return;closing=true;await runtime.shutdown();};
   process.stdin.once('end',close);process.stdin.once('close',close);process.once('SIGINT',close);process.once('SIGTERM',close);
- }catch{process.stderr.write('Moderator inputs or assigned identity unavailable; verify operator configuration.\n');process.exitCode=1;await runtime?.shutdown();}
+ }catch(error){process.stderr.write((remoteDiagnostic(error)?.message??'Moderator inputs or assigned identity unavailable; verify operator configuration.')+'\n');process.exitCode=1;await runtime?.shutdown();}
 }
