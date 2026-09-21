@@ -10,13 +10,13 @@ import {ListToolsRequestSchema} from '@modelcontextprotocol/sdk/types.js';
 import {zodToJsonSchema} from 'zod-to-json-schema';
 import {ConnectionRegistry,connectionView} from './connections.mjs';
 import { connectInvite, reconnectInvite, markReady } from './invite-session.mjs';
-import { remoteDiagnostic } from './remote-config.mjs';
+import { remoteDiagnostic, remoteSetupInstructions } from './remote-config.mjs';
 import { sessionRegistry } from './session-registries.mjs';
 import { CoworkSession } from './session.mjs';
 import { RoomRegistry } from './registry.mjs';
 import { MonitorManager } from './monitor-manager.mjs';
 
-export const VERSION = '1.3.0';
+export const VERSION = '1.3.1';
 const text = (data) => ({ content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data });
 const ok = (data) => text({ ok: true, data, request_id: randomUUID() });
 const fail = (code, message, retryable = false, action) => text({ ok: false, error: { code, message, retryable, ...(action ? { action } : {}) }, request_id: randomUUID() });
@@ -35,7 +35,7 @@ export async function createRuntime({ session = new CoworkSession(), server: inj
   const connections=injectedConnections??session.connections??sessionRegistry(session,ConnectionRegistry,['init','list','get','reserve','update']);session.connections=connections;
   const registry=injectedRegistry??sessionRegistry(session,RoomRegistry,['init','list','get','create','updateState']);
   if(injectedRegistry){await registry.init();await registry.list();}
-  const server = injectedServer ?? new McpServer({ name: 'au-cowork-personal', version: VERSION }, { capabilities: { logging: {} }, instructions: monitorInstructions });
+  const server = injectedServer ?? new McpServer({ name: 'au-cowork-personal', version: VERSION }, { capabilities: { logging: {} }, instructions: remoteSetupInstructions+"\n"+monitorInstructions });
   const monitor = new MonitorManager({ server, registry });
 
   const product = createProductTools(session,{...productOptions,profile:'personal',onRetainedMessage:(row,item)=>monitor.wakeRetained(row,item)});
@@ -91,7 +91,7 @@ export async function createRuntime({ session = new CoworkSession(), server: inj
       const ready = contacts.contacts?.some((c) => c.container_id === contact.cid);
       const row = await registry.create({ roomName: contact.display, identityName: as_agent, contactCid: contact.cid, membershipState: ready ? 'ready' : 'connecting' });
       session.bound = row; monitor.start(client, row);
-      return ok({ room_name: row.room_name, as_agent, status: ready ? 'connected' : 'connecting', monitoring_instructions:monitorInstructions, bootstrap:connectionBootstrap() });
+      return ok({ room_name: row.room_name, as_agent, status: ready ? 'connected' : 'connecting', monitoring_instructions:remoteSetupInstructions+"\n"+monitorInstructions, bootstrap:connectionBootstrap() });
     } catch (error) {
       if (contact) await client.removeContact({ contact: contact.cid }).catch(() => undefined);
       await client.removeIdentity({ name: as_agent }).catch(() => undefined);
@@ -117,7 +117,7 @@ export async function createRuntime({ session = new CoworkSession(), server: inj
       const known = [...(contacts.contacts ?? []), ...(contacts.pending ?? [])].some((c) => (c.container_id ?? c.cid) === row.contact_cid);
       if (!known) throw Object.assign(new Error('room_contact_missing'), { code: 'room_contact_missing' });
       row = await liveReady(client, row); session.bound = row; monitor.start(client, row);
-      return ok({ room_name: row.room_name, as_agent: row.identity_name, status: row.membership_state === 'ready' ? 'connected' : 'connecting', monitoring_instructions:monitorInstructions, bootstrap:connectionBootstrap() });
+      return ok({ room_name: row.room_name, as_agent: row.identity_name, status: row.membership_state === 'ready' ? 'connected' : 'connecting', monitoring_instructions:remoteSetupInstructions+"\n"+monitorInstructions, bootstrap:connectionBootstrap() });
     } catch (error) { await session.release(); throw error; }
   });
 

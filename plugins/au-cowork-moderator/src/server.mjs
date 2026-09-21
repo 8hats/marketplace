@@ -10,7 +10,7 @@ import {createProductTools} from '../../au-cowork-personal/src/product-tools.mjs
 import {MonitorManager} from '../../au-cowork-personal/src/monitor-manager.mjs';
 
 import {ForegroundWait,waitSchema,waitDescriptor,waitResult,monitorInstructions} from '../../au-cowork-personal/src/foreground-wait.mjs';
-import {remoteDiagnostic} from '../../au-cowork-personal/src/remote-config.mjs';
+import {remoteDiagnostic,remoteSetupInstructions} from '../../au-cowork-personal/src/remote-config.mjs';
 import {sessionRegistry} from '../../au-cowork-personal/src/session-registries.mjs';
 import {CoworkSession} from '../../au-cowork-personal/src/session.mjs';
 import {ConnectionRegistry,connectionView} from '../../au-cowork-personal/src/connections.mjs';
@@ -19,7 +19,7 @@ import {connectInvite,reconnectInvite} from '../../au-cowork-personal/src/invite
 const cid=z.string().regex(/^[a-fA-F0-9]{64}$/);
 const configuration=z.object({identityName:z.string().min(1),identityCid:cid,roomCid:cid,roomName:z.string().min(1),monitor:z.boolean().optional()});
 export async function createRuntime({inputs,session: suppliedSession,connections:injectedConnections}={}){
- const server=new Server({name:'au-cowork-moderator',version:'1.2.0'},{capabilities:{tools:{},logging:{}},instructions:monitorInstructions});
+ const server=new Server({name:'au-cowork-moderator',version:'1.2.1'},{capabilities:{tools:{},logging:{}},instructions:remoteSetupInstructions+"\n"+monitorInstructions});
  let session=inputs?null:(suppliedSession??new CoworkSession());
  if(!inputs)session.connections=injectedConnections??session.connections??sessionRegistry(session,ConnectionRegistry,['init','list','get','reserve','update']);
  const monitor=new MonitorManager({server,registry:{}});

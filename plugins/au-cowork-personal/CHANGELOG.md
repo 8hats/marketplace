@@ -1,5 +1,9 @@
 ## 1.3.0 — remote daemon connections
 
+## 1.3.1
+
+- Include remote setup guidance in MCP initialization and ship the complete guide inside each plugin. Clarify configuration paths and private token provisioning for fresh installations.
+
 - Add shared HTTPS/loopback remote configuration with protected token files.
 - Defer selection until use and explain missing local setup with recovery steps.
 - Retain persistent identities/reconnect records in private endpoint-scoped client storage.
