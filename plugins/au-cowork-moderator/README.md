@@ -1,6 +1,6 @@
 # AU Cowork Moderator
 
-Separate Moderator product profile with 22 product tools. Standalone `connect_to_room({"invite":"<one-use invite>"})` creates a unique persistent identity and returns a durable `connection_id`. Its identity/CID and room contact are stored in the selected daemon's private `cowork-agent-connections/` registry.
+Separate Moderator product profile with 22 product tools. Standalone `connect_to_room({"invite":"<one-use invite>"})` creates a unique persistent identity and returns a durable `connection_id`. Its identity/CID and room contact are recorded in `cowork-agent-connections/` under local daemon state, or the client’s private `~/.au-cowork-remotes/<endpoint-hash>/` directory in remote mode.
 
 After restarting the MCP session, use `list_rooms({})` and `connect_to_room({"connection_id":"<saved id>"})`. Reconnect preserves the identity/CID and room without redeeming another invitation. Selection is explicit, and a busy identity rejects binding without force. Standalone mode exposes 26 tools including foreground wait, connect, disconnect, and list.
 
@@ -114,7 +114,7 @@ Never redeem the invitation again or claim a role was granted from transport
 contact status alone. These fields do not grant permissions or verify a future
 external authenticator.
 
-Persistent connection records always use the selected daemon state. The Personal legacy room-name catalogue defaults to `<daemon state>/cowork-personal-legacy`; no home catalogue is scanned or migrated automatically. To explicitly reopen an old Personal catalogue, set `AC_LEGACY_ROOM_REGISTRY` to its absolute directory (formerly `~/.au-cowork-personal`, expanded by the operator). This does not change the persistent connection registry.
+Local connection records use the selected daemon state; remote records use the client’s private `~/.au-cowork-remotes/<endpoint-hash>/` directory. The Personal legacy room-name catalogue defaults to `cowork-personal-legacy` under the same selected local or remote client directory; no home catalogue is scanned or migrated automatically. To explicitly reopen an old Personal catalogue, set `AC_LEGACY_ROOM_REGISTRY` to its absolute directory (formerly `~/.au-cowork-personal`, expanded by the operator). This does not change the persistent connection registry.
 
 ## Ask a human to review a file
 
@@ -143,5 +143,5 @@ Existing MCP sessions must reload the rebuilt plugin to discover this tool. Save
 
 Use Node 22 or newer. Configure paired `AU_OURS_URL` / `AU_OURS_API_TOKEN` settings
 or project `.au-ours.json` with `url` and a private `tokenFile`. See
-[remote connection setup](../../docs/remote-ours.md) for HTTPS, setup recovery,
+[remote connection setup](docs/remote-ours.md) for HTTPS, setup recovery,
 persistent connection storage, and external lease cleanup.
