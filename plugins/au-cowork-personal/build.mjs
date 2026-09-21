@@ -8,7 +8,7 @@ const result = await build({
   outfile: new URL('./dist/cowork-mcp.mjs', import.meta.url).pathname,
   bundle: true,
   platform: 'node',
-  target: 'node20',
+  target: 'node22',
   format: 'esm',
   minify: true,
   metafile: true,

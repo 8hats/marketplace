@@ -6,6 +6,7 @@ import {join} from 'node:path';
 import {createHash} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {InMemoryTransport} from '@modelcontextprotocol/sdk/inMemory.js';
+import {sessionRegistry} from '../src/session-registries.mjs';
 import {ConnectionRegistry} from '../src/connections.mjs';
 import {CoworkSession} from '../src/session.mjs';
 import {createRuntime as personal} from '../src/server.mjs';
@@ -14,7 +15,7 @@ const room='A'.repeat(64),legacy={init:async()=>{},list:async()=>[],get:async()=
 function daemon(){
  const identities=new Map();let creates=0,redeems=0,releases=0;
  return {identities,counts:()=>({creates,redeems,releases}),attach:async({leaseToken})=>{
-  let current;return {
+  let current;return {close:async()=>{},
    createIdentity:async({name})=>{creates++;assert.equal(identities.has(name),false);current={name,cid:createHash('sha256').update(name).digest('hex').toUpperCase(),lease:leaseToken,contacts:[]};identities.set(name,current);},
    chooseIdentity:async({name,force})=>{assert.equal(force,false);const row=identities.get(name);if(!row)throw Object.assign(Error('absent'),{code:'NO_SUCH_IDENTITY'});if(row.lease&&row.lease!==leaseToken)throw Object.assign(Error('busy'),{code:'BOUND_ELSEWHERE'});current=row;row.lease=leaseToken;},
    currentIdentity:async()=>({name:current.name,cid:current.cid}),
@@ -27,9 +28,10 @@ function daemon(){
   };
  }};
 }
-async function open(factory,stateDir,network){
- const session=new CoworkSession({resolve:()=>({expectStateDir:stateDir}),attach:network.attach});
- const runtime=await factory({session,registry:legacy,connections:new ConnectionRegistry(stateDir)}),host=new Client({name:'test',version:'1'}),[a,b]=InMemoryTransport.createLinkedPair();await(runtime.server.server??runtime.server).connect(a);await host.connect(b);
+async function open(factory,stateDir,network,remote=false){
+ const session=new CoworkSession({resolve:()=>({expectStateDir:stateDir}),attach:network.attach,...remote?{remote:{url:'https://remote.example/gate'},attachRemoteFn:(_config,args)=>network.attach(args)}:{}});
+ const connections=remote?sessionRegistry(session,ConnectionRegistry,['list','get','reserve','update'],{home:stateDir}):new ConnectionRegistry(stateDir);
+ const runtime=await factory({session,registry:legacy,connections}),host=new Client({name:'test',version:'1'}),[a,b]=InMemoryTransport.createLinkedPair();await(runtime.server.server??runtime.server).connect(a);await host.connect(b);
  return {session,call:async(name,args={})=>JSON.parse((await host.callTool({name,arguments:args})).content[0].text),close:async()=>{await host.close();await runtime.shutdown();}};
 }
 for(const [profile,factory] of [['personal',personal],['moderator',moderator]])test(`${profile} cold session reconnect preserves identity CID and room without another redemption`,async()=>{
@@ -72,4 +74,14 @@ test('default legacy catalogue also stays under daemon state without creating a 
   const env={...process.env,HOME:dir};delete env.AC_LEGACY_ROOM_REGISTRY;
   const output=await new Promise((resolve,reject)=>{const child=spawn(process.execPath,['--input-type=module','-e',code],{env});let out='',err='';child.stdout.on('data',b=>out+=b);child.stderr.on('data',b=>err+=b);child.on('error',reject);child.on('exit',code=>code===0?resolve(out):reject(Error(err)));});assert.equal(output.trim(),join(dir,'cowork-personal-legacy'));await assert.rejects(stat(join(dir,'.au-cowork-personal')),{code:'ENOENT'});
  }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+for(const [profile,factory] of [['personal',personal],['moderator',moderator]])test(`${profile} remote cold reconnect retains persistent identity and scopes the saved connection to the endpoint`,async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'au-remote-persist-')),network=daemon();let a,b;
+ try{
+  a=await open(factory,dir,network,true);const first=(await a.call('connect_to_room',{invite:'remote-once'})).data;assert.equal(first.identity_lifetime,'persistent');
+  await a.close();a=null;assert.equal(network.identities.size,1);
+  b=await open(factory,dir,network,true);const listed=(await b.call('list_rooms')).data.rooms;assert.equal(listed.length,1);assert.equal(listed[0].connection_id,first.connection_id);
+  const resumed=(await b.call('connect_to_room',{connection_id:first.connection_id})).data;assert.equal(resumed.agent_cid,first.agent_cid);assert.equal(network.counts().redeems,1);assert.equal(network.counts().creates,1);
+ }finally{await a?.close();await b?.close();await rm(dir,{recursive:true,force:true});}
 });

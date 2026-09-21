@@ -1,3 +1,10 @@
+## 1.3.0 — remote daemon connections
+
+- Add shared HTTPS/loopback remote configuration with protected token files.
+- Defer selection until use and explain missing local setup with recovery steps.
+- Retain persistent identities/reconnect records in private endpoint-scoped client storage.
+- Pin SDK 3.8.1-nightly.9 and require Node 22; rebuild standalone bundles.
+
 ## Unreleased — artifact result submission
 
 - Add `ac_submit_result` and `ac_read` kind `artifact_result` for explicit submission of verified existing artifacts.

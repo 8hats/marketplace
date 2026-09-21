@@ -8,9 +8,9 @@ export async function connectInvite(session, invite, profile, registry=session.c
   if (session.bound) reject('session_already_bound');
   if (session.inviteAttempted) reject('invite_already_attempted');
   if(!registry)reject('connection_registry_unavailable');
-  session.inviteAttempted = true;
-  let row=await registry.reserve(profile,invite);
   const client = await session.ensureAttached();
+  let row=await registry.reserve(profile,invite);
+  session.inviteAttempted = true;
   try {
     await client.createIdentity({name:row.identity_name,bio:`Persistent Cowork ${profile} agent`,exposeLocal:false,localAutoAccept:false});
     const identity=await client.currentIdentity();

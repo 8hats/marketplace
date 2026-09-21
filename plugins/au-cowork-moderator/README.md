@@ -138,3 +138,10 @@ This invokes `consumer.ac.artifact.result.submit`. Summary must be nonempty and 
 Save the result ID and read `ac_read({"kind":"artifact_result","id":"<result id>"})`. List authorized results with `ac_read({"kind":"artifact_result"})`. The projection contains `id`, `summary`, `artifacts` (each with `id`, `filename`, `mime`, `size`, `hash`), `manifest_hash`, `submitted_by`, `submitted_at`, optional `approved_by`/`approved_at`, `is_current`, and `available_actions`. Check those fields to distinguish submission from approval. On an unknown outcome, inspect these reads and retained `ac_messages`; never automatically retry or invent a replacement key.
 
 Existing MCP sessions must reload the rebuilt plugin to discover this tool. Saved identities and room connections keep their existing persistence behavior.
+
+## Remote ours daemon
+
+Use Node 22 or newer. Configure paired `AU_OURS_URL` / `AU_OURS_API_TOKEN` settings
+or project `.au-ours.json` with `url` and a private `tokenFile`. See
+[remote connection setup](../../docs/remote-ours.md) for HTTPS, setup recovery,
+persistent connection storage, and external lease cleanup.

@@ -1,4 +1,5 @@
 import {applicationMessage} from './browser-attribution.mjs';
+import {remoteDiagnostic} from './remote-config.mjs';
 import {z, ZodError} from 'zod';
 import {registerAgentTools} from './product/agent-tools.mjs';
 import {consumerCommands,consumerToolName,limits} from './product/contracts.mjs';
@@ -55,7 +56,7 @@ export function createProductTools(session,{timeoutMs=30000,pollMs=20,profile='p
    else if(consumers.has(name))ctx.harness.acknowledgeCommandResult(value);
    else if(name==='ac_commands')ctx.harness.acknowledgeCommandResult(value.capabilities);
    return result;
-  }catch(error){return {isError:true,...encode(error instanceof DomainError?{code:error.code,message:error.message,effect:invoked&&error.effect==='none'?'unknown':error.effect}:error instanceof ZodError?{code:'invalid_request',message:'Invalid room tool arguments.',effect:'none'}:{code:'dependency_unavailable',message:'Outcome unavailable; inspect state before repeating a mutation.',effect:'unknown'})};}
+  }catch(error){const remote=remoteDiagnostic(error);return {isError:true,...encode(remote?{...remote,effect:invoked?'unknown':'none'}:error instanceof DomainError?{code:error.code,message:error.message,effect:invoked&&error.effect==='none'?'unknown':error.effect}:error instanceof ZodError?{code:'invalid_request',message:'Invalid room tool arguments.',effect:'none'}:{code:'dependency_unavailable',message:'Outcome unavailable; inspect state before repeating a mutation.',effect:'unknown'})};}
  }
 
  return {descriptors,execute,retainedMessages:async()=>{const ctx=await context();await ctx.check();return [...ctx.harness.messages];}};

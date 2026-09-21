@@ -3,6 +3,10 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {ConnectionRegistry} from '../src/connections.mjs';
 import test from 'node:test';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import {resolveRemoteConfig} from '../src/remote-config.mjs';
 import assert from 'node:assert/strict';
 import {LoggingMessageNotificationSchema} from '@modelcontextprotocol/sdk/types.js';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
@@ -15,14 +19,14 @@ const registry={init:async()=>{},list:async()=>[],create:async()=>{throw Error('
 async function setup(factory,options={}){
  const stateDir=await mkdtemp(join(tmpdir(),'au-invite-'));const connections=new ConnectionRegistry(stateDir);
  let identity,redemptions=0,releases=0,closed=0,lease;
- const sdk={createIdentity:async({name})=>{identity={name,cid:'B'.repeat(64)};return {info:identity};},currentIdentity:async()=>identity,
+ const sdk={close:async()=>{},createIdentity:async({name})=>{identity={name,cid:'B'.repeat(64)};return {info:identity};},currentIdentity:async()=>identity,
  addContact:async()=>{redemptions++;if(options.reject)throw Error('redemption uncertain');return {cid:roomCid,display:'Room'};},listContacts:async()=>({contacts:options.briefing?[{container_id:roomCid}]:[]}),
  closeTemporaryIdentityOp:async()=>{closed++;},releaseLease:async()=>{releases++;},listIncomingMessages:async()=>options.briefing?[{wire_id:'briefing',from:{id:roomCid}}]:[],listIncomingFiles:async()=>[],
  getHistoryItem:async()=>({direction:'in',from:{id:roomCid},text:JSON.stringify({version:1,kind:'room_briefing',briefing_version:1,room_id:'room',room_name:'Canonical Room',at:'2026-09-16T07:08:57.380Z',author:{display_name:'Room',identity:roomCid,role:'room'},message_id:'briefing',text:'Private criteria'})}),
  watchNotifications:async function*(_name,{signal}){await new Promise(resolve=>signal.addEventListener('abort',resolve,{once:true}));},
  sendMessage:async args=>{assert.equal(args.contact,roomCid);return {sent:true,wire_id:'sent-wire'};},
  getMessages:async()=>({messages:[{wire_id:'briefing-wire',from:{id:roomCid},body:'Room briefing'}],command_results:[],remaining:0})};
- const session=new CoworkSession({resolve:()=>({expectStateDir:stateDir}),attach:async args=>{lease=args.leaseToken;return sdk;}});
+ const session=new CoworkSession({resolve:()=>({expectStateDir:stateDir}),attach:async args=>{lease=args.leaseToken;return sdk;},...options.sessionOptions,attachRemoteFn:async(_config,args)=>{lease=args.leaseToken;return sdk;}});
  const runtime=await factory({session,registry,connections}),host=new Client({name:'test',version:'1'}),[a,b]=InMemoryTransport.createLinkedPair();
  await (runtime.server.server??runtime.server).connect(a);await host.connect(b);
  return {host,session,get identity(){return identity;},get lease(){return lease;},counts:()=>({redemptions,releases,closed}),stop:async()=>{await host.close();await runtime.shutdown();await rm(stateDir,{recursive:true,force:true});}};
@@ -76,5 +80,32 @@ for(const [profile,factory] of [['personal',personal],['moderator',moderator]]){
    const duplicate=await x.host.callTool({name:'wait_for_room_event',arguments:{timeout_ms:1000}});assert.equal(JSON.parse(duplicate.content[0].text).status,'already_waiting');
    await x.host.callTool({name:'disconnect_from_room',arguments:{}});assert.equal(JSON.parse((await pending).content[0].text).status,'disconnected');
   }finally{await x.stop();}
+ });
+}
+
+for(const [profile,factory] of [['personal',personal],['moderator',moderator]])for(const stage of ['resolve','attach']){
+ test(`${profile} explains local ${stage} setup failure and accepts configuration before any invite is attempted`,async()=>{
+  const cwd=fs.mkdtempSync(path.join(os.tmpdir(),'au-setup-recovery-'));
+  const secret='private-local-credential-must-not-leak';
+  const x=await setup(factory,{sessionOptions:{
+   resolveRemote:()=>resolveRemoteConfig({env:{},cwd}),
+   resolve:()=>{if(stage==='resolve')throw Error(secret);return {expectStateDir:'/unavailable-local'};},
+   attach:async()=>{throw Error(secret);},
+  }});
+  try{
+   const originalOwner=x.session.ownerToken;
+   const first=await x.host.callTool({name:'connect_to_room',arguments:{invite:'not-yet-submitted'}});
+   const error=JSON.parse(first.content[0].text).error;
+   assert.equal(error.code,'daemon_setup_required');
+   for(const hint of ['.au-ours.json','url','tokenFile','AU_OURS_URL','AU_OURS_API_TOKEN'])assert.ok(error.message.includes(hint));
+   assert.doesNotMatch(JSON.stringify(first),new RegExp(secret));
+   assert.equal(x.session.ownerToken,originalOwner);
+   if(profile==='personal')assert.equal(JSON.parse(first.content[0].text).error.retryable,true);
+   assert.equal(x.counts().redemptions,0);assert.equal(x.identity,undefined);assert.equal(x.session.inviteAttempted,undefined);
+   fs.writeFileSync(path.join(cwd,'token'),'test-token',{mode:0o600});
+   fs.writeFileSync(path.join(cwd,'.au-ours.json'),JSON.stringify({url:'https://example.test/gate',tokenFile:'token'}));
+   const next=await x.host.callTool({name:'connect_to_room',arguments:{invite:'not-yet-submitted'}});
+   assert.equal(JSON.parse(next.content[0].text).ok,true);assert.equal(x.counts().redemptions,1);
+  }finally{try{await x.stop();}finally{fs.rmSync(cwd,{recursive:true,force:true});}}
  });
 }
