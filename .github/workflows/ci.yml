@@ -53,6 +53,13 @@ jobs:
           node scripts/stdio-probe.mjs dist/cowork-mcp.mjs
           echo
           node scripts/stdio-probe.mjs src/server.mjs
+          echo
+          # Isolate why the earlier diagnostic reported "exited with code 0" on Windows. It
+          # differed from the probe above in two ways at once -- it discarded stdout AND never
+          # wrote a frame -- so these two runs separate them. On Linux all three stay alive.
+          node scripts/stdio-probe.mjs dist/cowork-mcp.mjs --no-frame
+          echo
+          node scripts/stdio-probe.mjs dist/cowork-mcp.mjs --ignore-stdout --no-frame
 
   validate:
     runs-on: ubuntu-latest
