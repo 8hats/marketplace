@@ -40,6 +40,20 @@ jobs:
           node --test --test-concurrency=1
           node build.mjs
 
+      # Open question this job exists to settle: the MCP stdio handshake does not complete on
+      # Windows, and the bundle exits instead of staying alive to serve. Probe both entry points
+      # with a real `initialize` frame. Responding means the harness was at fault; exiting or
+      # staying silent means the plugin does not serve MCP on Windows. Diagnostic, never fails
+      # the build -- a red job here would say "broken" before we know which it is.
+      - name: Windows MCP stdio probe (diagnostic, non-blocking)
+        shell: bash
+        continue-on-error: true
+        working-directory: plugins/au-cowork-personal
+        run: |
+          node scripts/stdio-probe.mjs dist/cowork-mcp.mjs
+          echo
+          node scripts/stdio-probe.mjs src/server.mjs
+
   validate:
     runs-on: ubuntu-latest
     steps:

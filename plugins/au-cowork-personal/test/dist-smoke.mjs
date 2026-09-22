@@ -27,7 +27,7 @@ async function diagnose(){
  probe.kill();probe.stdin.destroy();probe.stderr.destroy();
  return `bundle ${outcome}\n--- bundle stderr ---\n${err||'(none)'}`;
 }
-test('the standalone bundle serves MCP with no node_modules beside it',{skip:process.platform==='win32'&&'the MCP stdio handshake does not complete on Windows in CI; the bundle itself starts and exits 0 with no stderr, so this is a harness/platform interaction rather than a bundle fault -- unresolved, see PR #15'},async()=>{
+test('the standalone bundle serves MCP with no node_modules beside it',{skip:process.platform==='win32'&&'the bundle exits immediately on Windows instead of staying alive to serve: spawned with stdin held OPEN (no EOF) it exits 0 with no stderr, where the same probe on Linux stays running. Cause unknown; the plugin may not serve MCP on Windows at all. Run scripts/stdio-probe.mjs to settle it'},async()=>{
 const transport=new StdioClientTransport({command:process.execPath,args:[target],env:{...process.env,...home},stderr:'pipe'});
 const client=new Client({name:'standalone-bundle-test',version:'1'});
 try{
