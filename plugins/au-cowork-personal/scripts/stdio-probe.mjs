@@ -13,13 +13,18 @@ import path from 'node:path';
 const args=process.argv.slice(2);
 const target=args.find(a=>!a.startsWith('--'));
 const ignoreStdout=args.includes('--ignore-stdout');
+// --isolate copies the entry point somewhere with NO node_modules beside it, which is the
+// condition dist-smoke actually tests: the bundle is supposed to be self-contained.
+const isolate=args.includes('--isolate');
 const noFrame=args.includes('--no-frame');
 if(!target){console.error('usage: stdio-probe.mjs <entry.mjs> [--ignore-stdout] [--no-frame]');process.exit(2);}
 
 const home=await fs.mkdtemp(path.join(os.tmpdir(),'stdio-probe-'));
 // HOME is POSIX-only; Windows reads USERPROFILE. Set both so the probe never touches real state.
 const env={...process.env,HOME:home,USERPROFILE:home,OURS_STATE_DIR:path.join(home,'ours')};
-const child=spawn(process.execPath,[target],{env,stdio:['pipe',ignoreStdout?'ignore':'pipe','pipe']});
+let entry=target;
+if(isolate){entry=path.join(home,path.basename(target));await fs.copyFile(target,entry);}
+const child=spawn(process.execPath,[entry],{env,stdio:['pipe',ignoreStdout?'ignore':'pipe','pipe']});
 
 let out='',err='',exit=null;
 child.stdout?.on('data',c=>{out+=c;});
@@ -37,7 +42,7 @@ const deadline=Date.now()+10_000;
 while(Date.now()<deadline&&exit===null&&!out.includes('"id":1'))await new Promise(r=>setTimeout(r,100));
 
 const responded=out.includes('"id":1');
-const mode=`stdout=${ignoreStdout?'ignore':'pipe'} frame=${noFrame?'no':'yes'}`;
+const mode=`stdout=${ignoreStdout?'ignore':'pipe'} frame=${noFrame?'no':'yes'} isolated=${isolate?'yes':'no'}`;
 const verdict=responded?'RESPONDED to initialize -- the server works on this platform'
  :exit!==null?`EXITED (code ${exit}) -- did not stay alive`
  :ignoreStdout||noFrame?'STAYED ALIVE (no reply expected in this mode)'

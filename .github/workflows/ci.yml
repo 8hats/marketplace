@@ -60,6 +60,11 @@ jobs:
           node scripts/stdio-probe.mjs dist/cowork-mcp.mjs --no-frame
           echo
           node scripts/stdio-probe.mjs dist/cowork-mcp.mjs --ignore-stdout --no-frame
+          echo
+          # The remaining difference from dist-smoke: it copies the bundle somewhere with NO
+          # node_modules beside it. If the bundle only serves when the repo's node_modules is
+          # present, it is not self-contained on Windows -- which would be a real product defect.
+          node scripts/stdio-probe.mjs dist/cowork-mcp.mjs --isolate
 
   validate:
     runs-on: ubuntu-latest
