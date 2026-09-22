@@ -17,10 +17,16 @@ on Windows an installed 1.3.2 exits instead of serving. If you are on Windows, 1
 
 ## 1.3.2 — Windows follow-ups to 1.3.1
 
-- Recover from an orphaned invite marker. A reserve interrupted between its two writes (the
-  failure 1.3.1 fixed on Windows) left an `invite-<sha>.attempt` marker with no connection
-  record, permanently rejecting that one-use invite with `invite_already_attempted`. Such a
-  marker is now reclaimed once it is demonstrably stale. Upgrading is enough; no manual cleanup.
+- Recover from an orphaned invite marker. A reserve interrupted between its two writes leaves an
+  `invite-<sha>.attempt` marker with no connection record, permanently rejecting that one-use
+  invite with `invite_already_attempted`. Such a marker is now reclaimed once it is demonstrably
+  stale. Upgrading is enough; no manual cleanup.
+  Scope, corrected after release: this residue was NOT reachable by Windows users on 1.3.1.
+  `reserve()` calls `init()` first, and `init()` called `process.getuid()`, which does not exist
+  on Windows, so it threw before writing anything. Producing the residue needed a build with that
+  check fixed but the directory-fsync abort not, which is a mid-debugging state rather than a
+  shipped one. The recovery is still correct and worth having: the crash window between the two
+  writes is real on every platform, and it now fails safe.
 - Guard the reclaim against replaying a real redemption. The marker now records a stage and is
   flipped to `attempted` before the invite is handed to the daemon, so a marker that ever
   reached the daemon is never reclaimable even if its connection record is deleted by hand.
