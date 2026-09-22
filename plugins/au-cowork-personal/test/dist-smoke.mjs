@@ -47,7 +47,10 @@ try{
 // then loaded, connected nothing and exited 0 with an empty stderr: no crash, no output, no
 // server. The moderator plugin already used pathToFileURL; this pins the personal one.
 test('the bundle still serves from a path the URL parser would mangle',async()=>{
- for(const awkward of ['hash#dir','query?dir','space dir']){
+ // '?' is not a legal filename character on Windows, so that case is POSIX-only. '#' is legal
+ // on both and is the one that actually broke the guard.
+ const awkwardNames=['hash#dir','space dir',...(process.platform==='win32'?[]:['query?dir'])];
+ for(const awkward of awkwardNames){
   const base=await fs.mkdtemp(path.join(os.tmpdir(),'cowork-path-'));
   const nest=path.join(base,awkward);
   try{
