@@ -36,6 +36,7 @@ test('the distributable carries exact pinned third-party license texts', async (
     const lf = (value) => value.replace(/\r\n/g, '\n');
     assert.match(notice, new RegExp(`===== ${name.replace('/', '\\/')} =====`)); assert.ok(lf(notice).includes(lf(license).trim()));
   }
-  const { stdout } = await exec('npm', ['pack', '--dry-run', '--json'], { cwd: new URL('..', import.meta.url) });
+  // npm is npm.cmd on Windows and execFile does not resolve it without a shell.
+  const { stdout } = await exec('npm', ['pack', '--dry-run', '--json'], { cwd: new URL('..', import.meta.url), shell: process.platform === 'win32' });
   const packed = JSON.parse(stdout)[0].files.map((row) => row.path); assert.ok(packed.includes('dist/THIRD_PARTY_LICENSES.txt')); assert.ok(packed.includes('dist/BUNDLED_PACKAGES.json'));
 });
