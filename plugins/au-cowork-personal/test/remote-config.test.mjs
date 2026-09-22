@@ -43,8 +43,28 @@ test('project configuration uses protected token file and rejects unsafe permiss
   const file=path.join(cwd,'.au-ours.json'),token=path.join(cwd,'token');
   fs.writeFileSync(token,secret,{mode:0o600});fs.writeFileSync(file,JSON.stringify({url:environment.AU_OURS_URL,tokenFile:'token'}));
   const selected=resolveRemoteConfig({env:{},cwd});assert.equal(selected.token(),secret);
-  if(process.platform!=='win32'){fs.chmodSync(token,0o644);assert.throws(()=>selected.token(),{code:'remote_configuration'});}
   fs.writeFileSync(file,'{');assert.throws(()=>resolveRemoteConfig({env:{},cwd}),{code:'remote_configuration'});
+ }finally{fs.rmSync(cwd,{recursive:true,force:true});}
+});
+// Split out and VISIBLY skipped rather than hidden behind an `if`: on Windows chmod cannot
+// clear group/other bits, so this assertion can never hold there. A silent `if` made a Windows
+// run report "passed" for a permission check it never made.
+test('a token file with group/other permissions is rejected',{skip:process.platform==='win32'&&'chmod cannot clear group/other bits on Windows; stat always reports 0666'},()=>{
+ const cwd=fs.mkdtempSync(path.join(os.tmpdir(),'au-remote-'));
+ try{
+  const file=path.join(cwd,'.au-ours.json'),token=path.join(cwd,'token');
+  fs.writeFileSync(token,secret,{mode:0o600});fs.writeFileSync(file,JSON.stringify({url:environment.AU_OURS_URL,tokenFile:'token'}));
+  const selected=resolveRemoteConfig({env:{},cwd});assert.equal(selected.token(),secret);
+  fs.chmodSync(token,0o644);assert.throws(()=>selected.token(),{code:'remote_configuration'});
+ }finally{fs.rmSync(cwd,{recursive:true,force:true});}
+});
+test('a symlinked token file is rejected',{skip:process.platform==='win32'&&'creating a file symlink on Windows requires admin or Developer Mode'},()=>{
+ const cwd=fs.mkdtempSync(path.join(os.tmpdir(),'au-remote-'));
+ try{
+  const file=path.join(cwd,'.au-ours.json'),token=path.join(cwd,'token'),real=path.join(cwd,'real-secret');
+  fs.writeFileSync(real,secret,{mode:0o600});fs.symlinkSync(real,token);
+  fs.writeFileSync(file,JSON.stringify({url:environment.AU_OURS_URL,tokenFile:'token'}));
+  assert.throws(()=>resolveRemoteConfig({env:{},cwd}).token(),{code:'remote_configuration'});
  }finally{fs.rmSync(cwd,{recursive:true,force:true});}
 });
 test('every request refuses redirects and cannot leave selected origin/path',async()=>{
