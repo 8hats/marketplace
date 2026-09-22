@@ -17,7 +17,7 @@ import { CoworkSession } from './session.mjs';
 import { RoomRegistry } from './registry.mjs';
 import { MonitorManager } from './monitor-manager.mjs';
 
-export const VERSION = '1.3.2';
+export const VERSION = '1.3.3';
 const text = (data) => ({ content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data });
 const ok = (data) => text({ ok: true, data, request_id: randomUUID() });
 const fail = (code, message, retryable = false, action) => text({ ok: false, error: { code, message, retryable, ...(action ? { action } : {}) }, request_id: randomUUID() });
