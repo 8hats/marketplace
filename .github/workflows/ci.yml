@@ -52,24 +52,22 @@ jobs:
           echo
           node scripts/stdio-probe.mjs src/server.mjs
 
-      # KNOWN FAILURE, deliberately non-blocking. Copied to a directory with no node_modules --
-      # which is how the plugin is installed -- the bundle exits 0 on Windows instead of serving,
-      # while Linux serves fine in the same layout. Cause not determined. This is advisory so an
-      # open defect does not block unrelated work; it is NOT evidence that Windows is healthy.
-      # The two --ignore-stdout/--no-frame runs record a real platform difference found on the
-      # way here: with stdout discarded the server exits on Windows but stays alive on Linux.
-      - name: Windows bundle-in-isolation probe (KNOWN FAILING, advisory only)
+      # The installed configuration: bundle copied somewhere with no node_modules beside it.
+      # This used to exit 0 without serving on Windows -- the main-module guard built its file
+      # URL by string concatenation and the comparison failed, so the transport never connected.
+      # Now a real check, so that regression cannot come back quietly.
+      - name: Windows bundle-in-isolation probe
         shell: bash
-        continue-on-error: true
         working-directory: plugins/au-cowork-personal
         run: |
-          # The isolation probe runs LAST: it exits non-zero, and bash -e would otherwise abort
-          # the step before the two runs below ever execute.
+          node scripts/stdio-probe.mjs dist/cowork-mcp.mjs --isolate
+          echo
+          # Records a genuine platform difference found on the way to that bug: with stdout
+          # discarded the server exits on Windows but stays alive on Linux. Harmless for real
+          # clients, which always pipe stdout.
           node scripts/stdio-probe.mjs dist/cowork-mcp.mjs --no-frame
           echo
           node scripts/stdio-probe.mjs dist/cowork-mcp.mjs --ignore-stdout --no-frame
-          echo
-          node scripts/stdio-probe.mjs dist/cowork-mcp.mjs --isolate
 
   validate:
     runs-on: ubuntu-latest

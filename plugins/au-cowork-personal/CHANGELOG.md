@@ -22,17 +22,15 @@
   could not hold on Windows, so a Windows run reported them as passing. They now report as
   skipped. Note this proves the suite RUNS on Windows, not that the skipped assertions hold.
 - Add a `windows-latest` CI job so the platform claim is checked by a runner rather than asserted.
-- **KNOWN DEFECT: the standalone bundle does not serve MCP on Windows when installed.** Probed on
-  a Windows runner with a real `initialize` frame: from inside the repo, with `node_modules` beside
-  it, both the bundle and the source answer in full. Copied to a directory with no `node_modules`
-  -- which is exactly how the plugin is installed, since `node_modules` is not shipped -- the bundle
-  exits 0 immediately without serving. Linux answers in both cases. The cause is NOT established:
-  the bundle does retain runtime `require('ajv/dist/runtime/...')` calls that resolve out of
-  `node_modules`, but Linux serves fine in the same isolated layout, so startup evidently does not
-  reach them and that explanation does not by itself account for the Windows exit. Nothing so far
-  shows this is specific to the CI runner rather than to Windows generally. Reproduce with
-  `node scripts/stdio-probe.mjs dist/cowork-mcp.mjs --isolate`.
-  This release therefore does NOT establish that the plugin works on Windows.
+- Fix the plugin not serving MCP on Windows once installed. The server decides whether to connect
+  its transport by comparing `import.meta.url` against a file URL it built by string concatenation
+  (``new URL(`file://${process.argv[1]}`)``). When that comparison fails the module loads, connects
+  nothing, and exits 0 with an empty stderr -- no crash, no output, no server. Probed on a Windows
+  runner: from inside the repo it served, but copied to a directory with no `node_modules` beside
+  it -- which is how the plugin is installed -- it exited without serving. `pathToFileURL` fixes
+  it, which `au-cowork-moderator` already used. Reproducible on any platform by running the bundle
+  from a directory containing `#` or `?`, and now pinned by a test that does exactly that.
+  Verified on the Windows runner: the installed configuration now answers `initialize`.
 
 - Pin the advertised server version to `package.json`. The version lives in four places and only
   three were tested, so a partial bump could leave clients told the previous version.

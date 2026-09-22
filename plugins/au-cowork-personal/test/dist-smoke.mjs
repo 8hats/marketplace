@@ -29,7 +29,7 @@ async function diagnose(){
  probe.kill();probe.stdin.destroy();probe.stderr.destroy();
  return `bundle ${outcome}\n--- bundle stderr ---\n${err||'(none)'}`;
 }
-test('the standalone bundle serves MCP with no node_modules beside it',{skip:process.platform==='win32'&&'KNOWN WINDOWS DEFECT, not a harness limitation: run from a directory with no node_modules beside it -- which is how the plugin is installed -- the bundle exits 0 immediately instead of serving. From inside the repo it responds. Linux does both. Reproduce: node scripts/stdio-probe.mjs dist/cowork-mcp.mjs --isolate'},async()=>{
+test('the standalone bundle serves MCP with no node_modules beside it',async()=>{
 const transport=new StdioClientTransport({command:process.execPath,args:[target],env:{...process.env,...home},stderr:'pipe'});
 const client=new Client({name:'standalone-bundle-test',version:'1'});
 try{
