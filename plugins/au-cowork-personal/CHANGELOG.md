@@ -26,9 +26,11 @@
   a Windows runner with a real `initialize` frame: from inside the repo, with `node_modules` beside
   it, both the bundle and the source answer in full. Copied to a directory with no `node_modules`
   -- which is exactly how the plugin is installed, since `node_modules` is not shipped -- the bundle
-  exits 0 immediately without serving. Linux answers in both cases. The bundle retains runtime
-  `require('ajv/dist/runtime/...')` calls that resolve out of `node_modules`, which is the most
-  likely cause. Reproduce with `node scripts/stdio-probe.mjs dist/cowork-mcp.mjs --isolate`.
+  exits 0 immediately without serving. Linux answers in both cases. The cause is NOT established:
+  the bundle does retain runtime `require('ajv/dist/runtime/...')` calls that resolve out of
+  `node_modules`, but Linux serves fine in the same isolated layout, so startup evidently does not
+  reach them and that explanation does not by itself account for the Windows exit. Reproduce with
+  `node scripts/stdio-probe.mjs dist/cowork-mcp.mjs --isolate`.
   This release therefore does NOT establish that the plugin works on Windows.
 
 - Pin the advertised server version to `package.json`. The version lives in four places and only
