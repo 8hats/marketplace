@@ -70,7 +70,11 @@ export class ConnectionRegistry {
    const {reclaimable,connection_id:previous}=await this.attemptState(attempt);
    if(!reclaimable)throw Object.assign(error('invite_already_attempted'),{connection_id:previous});
    await fs.rm(attempt,{force:true});
-   await this.write(attempt,{connection_id,stage:'reserved'},true);
+   // Two processes can both judge the same marker stale and race to re-create it. The 'wx'
+   // create is what makes that safe -- the loser is refused rather than proceeding -- but a
+   // raw EEXIST is not a public code and would surface as internal_error.
+   try{await this.write(attempt,{connection_id,stage:'reserved'},true);}
+   catch(raced){if(raced.code!=='EEXIST')throw raced;throw Object.assign(error('invite_already_attempted'),{connection_id:previous});}
   }
   await this.write(this.file(connection_id),row,true);return row;
  }

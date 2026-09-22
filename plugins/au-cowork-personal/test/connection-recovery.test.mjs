@@ -63,6 +63,40 @@ test('a marker that reached the redeem stage is NEVER reclaimable, even stale wi
  }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
 
+// The residue every existing Windows user actually has is a PRE-1.3.2 marker: a valid body with
+// no stage field at all. reserve() now stamps stage:'reserved', so no other test produces one.
+// Requiring stage==='reserved' instead of "not attempted" would make every real stale marker
+// permanently unrecoverable while the suite stayed green -- the exact failure this release ends.
+const legacyMarker=async(registry,invite,connection_id)=>{
+ await registry.init();
+ await fs.writeFile(registry.attemptFile(invite),JSON.stringify({connection_id})+'\n',{mode:0o600});
+ await backdate(registry.attemptFile(invite));
+};
+
+test('a pre-1.3.2 marker with no stage field is still reclaimable when its record is gone',async()=>{
+ const dir=await scratch();
+ try{
+  const registry=new ConnectionRegistry(dir);
+  const first=await registry.reserve('personal','one-use');
+  const stale=first.connection_id;
+  await fs.rm(registry.file(stale));
+  await legacyMarker(registry,'one-use',stale);
+  const second=await registry.reserve('personal','one-use');
+  assert.notEqual(second.connection_id,stale);
+  assert.equal((await registry.get(second.connection_id,'personal')).identity_name,second.identity_name);
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
+});
+
+test('a pre-1.3.2 marker whose record still exists blocks, stage field or not',async()=>{
+ const dir=await scratch();
+ try{
+  const registry=new ConnectionRegistry(dir);
+  const first=await registry.reserve('personal','one-use');
+  await legacyMarker(registry,'one-use',first.connection_id); // record left intact
+  await assert.rejects(registry.reserve('personal','one-use'),e=>e.code==='invite_already_attempted'&&e.connection_id===first.connection_id);
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
+});
+
 test('a truncated or unparseable stale marker is treated as reclaimable, not as an internal error',async()=>{
  for(const body of ['','{','{"connection_id":"not-a-uuid"}','null']){
   const dir=await scratch();
