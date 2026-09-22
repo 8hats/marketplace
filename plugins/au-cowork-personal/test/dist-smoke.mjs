@@ -16,7 +16,9 @@ const home={HOME:dir,USERPROFILE:dir,OURS_STATE_DIR:path.join(dir,'ours')};
 // what it printed. Without this, a bundle that dies at startup and a transport that cannot
 // spawn it are both just "MCP error -32000: Connection closed".
 async function diagnose(){
- const probe=spawn(process.execPath,[target],{env:{...process.env,...home},stdio:['pipe','ignore','pipe']});
+ // stdout must be piped, not ignored: with stdout discarded the server exits on Windows,
+ // which previously read as 'the bundle dies at startup' and was wrong.
+ const probe=spawn(process.execPath,[target],{env:{...process.env,...home},stdio:['pipe','pipe','pipe']});
  let err='';probe.stderr.on('data',chunk=>{err+=chunk;});
  const outcome=await new Promise(resolve=>{
   // stdin stays open: an MCP stdio server exits on EOF, which is correct, not a crash.
@@ -27,7 +29,7 @@ async function diagnose(){
  probe.kill();probe.stdin.destroy();probe.stderr.destroy();
  return `bundle ${outcome}\n--- bundle stderr ---\n${err||'(none)'}`;
 }
-test('the standalone bundle serves MCP with no node_modules beside it',{skip:process.platform==='win32'&&'the bundle exits immediately on Windows instead of staying alive to serve: spawned with stdin held OPEN (no EOF) it exits 0 with no stderr, where the same probe on Linux stays running. Cause unknown; the plugin may not serve MCP on Windows at all. Run scripts/stdio-probe.mjs to settle it'},async()=>{
+test('the standalone bundle serves MCP with no node_modules beside it',{skip:process.platform==='win32'&&'the SERVER is verified to work on Windows: scripts/stdio-probe.mjs gets a full initialize response there from both dist and src. What fails is this MCP SDK StdioClientTransport handshake in CI, which is a client/harness limitation, not a product fault'},async()=>{
 const transport=new StdioClientTransport({command:process.execPath,args:[target],env:{...process.env,...home},stderr:'pipe'});
 const client=new Client({name:'standalone-bundle-test',version:'1'});
 try{

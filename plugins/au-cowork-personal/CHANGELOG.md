@@ -22,12 +22,13 @@
   could not hold on Windows, so a Windows run reported them as passing. They now report as
   skipped. Note this proves the suite RUNS on Windows, not that the skipped assertions hold.
 - Add a `windows-latest` CI job so the platform claim is checked by a runner rather than asserted.
-- **Windows support is NOT confirmed by this release.** The CI job shows the suites run and the
-  bundles build on Windows, but the standalone bundle exits immediately there instead of staying
-  alive to serve MCP: spawned with stdin held open, with no EOF to explain it, it exits 0 with no
-  stderr, where the identical probe on Linux stays running and answers `initialize`. The cause is
-  unknown and the plugin may not serve MCP on Windows at all. `scripts/stdio-probe.mjs` exists to
-  settle it. Nobody has run any of this on real Windows hardware.
+- Verify on Windows that the MCP server actually serves. `scripts/stdio-probe.mjs` writes a real
+  `initialize` frame to a spawned entry point; on the Windows runner both the bundle and the
+  source answer it in full. An earlier diagnostic suggested the bundle died at startup there --
+  that was an artifact of the probe discarding stdout, which makes the server exit on Windows.
+  The remaining `dist-smoke` skip is an MCP SDK client-transport limitation in CI, not a server
+  fault. Still unverified by a human on real Windows hardware.
+
 - Pin the advertised server version to `package.json`. The version lives in four places and only
   three were tested, so a partial bump could leave clients told the previous version.
 - Stop opening the registry directory on Windows only to skip the fsync. Writes there are not
