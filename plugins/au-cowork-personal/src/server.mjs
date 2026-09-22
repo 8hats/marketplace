@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { randomUUID } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 import {connectionBootstrap} from './bootstrap.mjs';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -149,7 +150,7 @@ export async function createRuntime({ session = new CoworkSession(), server: inj
   return { server, session, registry, monitor, shutdown: async () => { monitor.stop(); await session.release(); } };
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const runtime = await createRuntime().catch(async (error) => {
     const diagnostic=remoteDiagnostic(error)?.message??'Cowork is unavailable. Ask the operator to verify the daemon configuration and service.';
     process.stderr.write(diagnostic+'\n');
