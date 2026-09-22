@@ -15,6 +15,15 @@ test('package, Claude, and Codex manifests agree', async () => {
   assert.deepEqual(Object.keys((await read('../.mcp.json')).mcpServers), ['au-cowork']);
 });
 
+// The version the MCP server advertises to clients is a FOURTH location, and nothing tied it to
+// package.json: bumping the three manifests and forgetting src/server.mjs left the suite green
+// while every client was told the old version.
+test('the advertised server version matches the package version', async () => {
+  const pkg = await read('../package.json');
+  const { VERSION } = await import('../src/server.mjs');
+  assert.equal(VERSION, pkg.version);
+});
+
 test('the distributable carries exact pinned third-party license texts', async () => {
   const notice = await fs.readFile(new URL('../dist/THIRD_PARTY_LICENSES.txt', import.meta.url), 'utf8');
   const bundled = await read('../dist/BUNDLED_PACKAGES.json');

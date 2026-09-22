@@ -6,6 +6,30 @@ on:
   pull_request:
 
 jobs:
+  # The Cowork plugins ship Windows-specific branches whose only evidence was a claim in a PR
+  # body. This job makes the platform claim checkable. It proves the suites RUN on Windows and
+  # that the bundles build there — not that the win32-skipped assertions hold; those are skipped
+  # because Windows cannot express them (no POSIX mode bits, symlinks need elevation).
+  # Concurrency is pinned to 1: parallel runs trip a pre-existing libuv assertion on Windows
+  # (`new_time >= loop->time`, src\win\core.c) that is unrelated to this code.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: AU Cowork Personal suite and bundle
+        run: |
+          npm ci --prefix plugins/au-cowork-personal
+          npm ci --prefix plugins/au-cowork-moderator
+          node --test --test-concurrency=1 plugins/au-cowork-personal/test
+          node plugins/au-cowork-personal/build.mjs
+      - name: Moderator suite and bundle
+        run: |
+          node --test --test-concurrency=1 plugins/au-cowork-moderator/test
+          node plugins/au-cowork-moderator/build.mjs
+
   validate:
     runs-on: ubuntu-latest
     steps:
