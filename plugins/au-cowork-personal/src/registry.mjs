@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 const SCHEMA_VERSION = 1;
+const WIN = process.platform === 'win32';
 export const MAX_ROOM_NAME = 256;
 
 export function normalizeRoomName(value) {
@@ -42,7 +43,7 @@ export class RoomRegistry {
     const handle = await fs.open(this.fileFor(normalized), constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600)
       .catch((error) => { if (error.code === 'EEXIST') { const e = new Error('room_name_conflict'); e.code = 'room_name_conflict'; throw e; } throw error; });
     try { await handle.writeFile(`${JSON.stringify(row, null, 2)}\n`); await handle.sync(); } finally { await handle.close(); }
-    const dir = await fs.open(this.root, constants.O_RDONLY); try { await dir.sync(); } finally { await dir.close(); }
+    const dir = await fs.open(this.root, constants.O_RDONLY); try { if (!WIN) await dir.sync(); } finally { await dir.close(); }
     return row;
   }
   async get(roomName) {
@@ -61,7 +62,7 @@ export class RoomRegistry {
     const handle = await fs.open(tmp, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
     try { await handle.writeFile(`${JSON.stringify(next, null, 2)}\n`); await handle.sync(); } finally { await handle.close(); }
     await fs.rename(tmp, target);
-    const dir = await fs.open(this.root, constants.O_RDONLY); try { await dir.sync(); } finally { await dir.close(); }
+    const dir = await fs.open(this.root, constants.O_RDONLY); try { if (!WIN) await dir.sync(); } finally { await dir.close(); }
     return next;
   }
 }
