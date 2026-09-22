@@ -37,6 +37,18 @@ from the configuration file's directory. Keep token files outside the repository
 The adapter reads the protected file on every request, allowing operator token
 rotation without embedding the value in configuration.
 
+**On Windows those guarantees are weaker, and you should place the token file
+accordingly.** Windows reports `0666` for every file and has no POSIX owner, so
+neither the permission check nor the owner check can run; the adapter enforces
+only that the path is a regular file, is not a symlink, and is at most 8 KiB.
+The symlink rejection is also best-effort there — it inspects the final path
+component before opening (Node exposes no atomic open-without-following on
+Windows), so it cannot see a redirected parent directory or a hardlink. Keep the
+token under a directory whose ACLs already restrict it to your account, such as
+`%USERPROFILE%`, rather than a shared location like `C:\ProgramData` or a
+network drive. Restricting access by ACL is the operator's responsibility on
+Windows; the adapter cannot verify it.
+
 The shipped Codex MCP configuration sets its working directory to the installed
 plugin root, which can differ from the user's project. Prefer an absolute
 `AU_OURS_CONFIG=/absolute/path/project.json` in the MCP server environment when

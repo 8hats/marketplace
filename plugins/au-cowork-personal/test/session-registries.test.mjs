@@ -17,7 +17,7 @@ test('remote connection records survive a new session and stay isolated by endpo
   await assert.rejects(b.reserve('personal','one-use'),{code:'invite_already_attempted'});
  }finally{await fs.rm(home,{recursive:true,force:true});}
 });
-test('remote registry rejects a symlinked profile base',async()=>{
+test('remote registry rejects a symlinked profile base',{skip:process.platform==='win32'&&'creating a directory symlink on Windows requires admin or Developer Mode'},async()=>{
  const home=await fs.mkdtemp(path.join(os.tmpdir(),'au-remote-registry-'));
  try{await fs.symlink(os.tmpdir(),path.join(home,'.au-cowork-remotes'));const r=sessionRegistry({selection:{registryKey:'remote:https://example.test'}},ConnectionRegistry,methods,{home});await assert.rejects(r.list('personal'),{code:'connection_registry_unsafe'});}finally{await fs.rm(home,{recursive:true,force:true});}
 });

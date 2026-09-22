@@ -1,3 +1,12 @@
+## 1.2.2 — Windows follow-ups to 1.2.1
+
+- This plugin bundles `au-cowork-personal`'s sources, so every 1.3.2 change to the connection
+  registry, invite-marker recovery and token-file handling applies to it as well. This was also
+  true of the 1.2.1 Windows fix, which was described only as a build change: the moderator's
+  shipped runtime changed then too. Recorded here so the release history is accurate.
+- Add a manifest test. The moderator had no test tying its three version locations together,
+  and no check that the version it advertises matches `package.json`.
+
 ## 1.2.0 — remote daemon connections
 
 ## 1.2.1

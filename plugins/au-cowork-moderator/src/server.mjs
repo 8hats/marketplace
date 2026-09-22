@@ -16,12 +16,13 @@ import {CoworkSession} from '../../au-cowork-personal/src/session.mjs';
 import {ConnectionRegistry,connectionView} from '../../au-cowork-personal/src/connections.mjs';
 import {connectInvite,reconnectInvite} from '../../au-cowork-personal/src/invite-session.mjs';
 
+export const VERSION='1.2.2';
 const cid=z.string().regex(/^[a-fA-F0-9]{64}$/);
 const configuration=z.object({identityName:z.string().min(1),identityCid:cid,roomCid:cid,roomName:z.string().min(1),monitor:z.boolean().optional()});
 export async function createRuntime({inputs,session: suppliedSession,connections:injectedConnections}={}){
- const server=new Server({name:'au-cowork-moderator',version:'1.2.1'},{capabilities:{tools:{},logging:{}},instructions:remoteSetupInstructions+"\n"+monitorInstructions});
+ const server=new Server({name:'au-cowork-moderator',version:VERSION},{capabilities:{tools:{},logging:{}},instructions:remoteSetupInstructions+"\n"+monitorInstructions});
  let session=inputs?null:(suppliedSession??new CoworkSession());
- if(!inputs)session.connections=injectedConnections??session.connections??sessionRegistry(session,ConnectionRegistry,['init','list','get','reserve','update']);
+ if(!inputs)session.connections=injectedConnections??session.connections??sessionRegistry(session,ConnectionRegistry,['init','list','get','reserve','update','attempted']);
  const monitor=new MonitorManager({server,registry:{}});
  if(inputs){
   const config=configuration.parse(inputs),sdk=inputs.client;

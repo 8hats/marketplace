@@ -15,14 +15,28 @@ test('package, Claude, and Codex manifests agree', async () => {
   assert.deepEqual(Object.keys((await read('../.mcp.json')).mcpServers), ['au-cowork']);
 });
 
+// The version the MCP server advertises to clients is a FOURTH location, and nothing tied it to
+// package.json: bumping the three manifests and forgetting src/server.mjs left the suite green
+// while every client was told the old version.
+test('the advertised server version matches the package version', async () => {
+  const pkg = await read('../package.json');
+  const { VERSION } = await import('../src/server.mjs');
+  assert.equal(VERSION, pkg.version);
+});
+
 test('the distributable carries exact pinned third-party license texts', async () => {
   const notice = await fs.readFile(new URL('../dist/THIRD_PARTY_LICENSES.txt', import.meta.url), 'utf8');
   const bundled = await read('../dist/BUNDLED_PACKAGES.json');
   assert.deepEqual(bundled, ['@modelcontextprotocol/sdk', '@ours.network/sdk', 'ajv', 'ajv-formats', 'fast-deep-equal', 'fast-uri', 'json-schema-traverse', 'zod', 'zod-to-json-schema']);
   for (const name of bundled) {
     const license = await fs.readFile(new URL(`../node_modules/${name}/LICENSE`, import.meta.url), 'utf8').catch(() => fs.readFile(new URL(`../node_modules/${name}/LICENSE.md`, import.meta.url), 'utf8'));
-    assert.match(notice, new RegExp(`===== ${name.replace('/', '\\/')} =====`)); assert.ok(notice.includes(license.trim()));
+    // Compare with line endings normalised: git checks the committed notice out as CRLF on
+    // Windows while npm delivers the package LICENSE with LF, so a raw includes() compares
+    // encodings rather than licence texts.
+    const lf = (value) => value.replace(/\r\n/g, '\n');
+    assert.match(notice, new RegExp(`===== ${name.replace('/', '\\/')} =====`)); assert.ok(lf(notice).includes(lf(license).trim()));
   }
-  const { stdout } = await exec('npm', ['pack', '--dry-run', '--json'], { cwd: new URL('..', import.meta.url) });
+  // npm is npm.cmd on Windows and execFile does not resolve it without a shell.
+  const { stdout } = await exec('npm', ['pack', '--dry-run', '--json'], { cwd: new URL('..', import.meta.url), shell: process.platform === 'win32' });
   const packed = JSON.parse(stdout)[0].files.map((row) => row.path); assert.ok(packed.includes('dist/THIRD_PARTY_LICENSES.txt')); assert.ok(packed.includes('dist/BUNDLED_PACKAGES.json'));
 });

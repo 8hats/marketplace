@@ -43,7 +43,9 @@ export class RoomRegistry {
     const handle = await fs.open(this.fileFor(normalized), constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600)
       .catch((error) => { if (error.code === 'EEXIST') { const e = new Error('room_name_conflict'); e.code = 'room_name_conflict'; throw e; } throw error; });
     try { await handle.writeFile(`${JSON.stringify(row, null, 2)}\n`); await handle.sync(); } finally { await handle.close(); }
-    const dir = await fs.open(this.root, constants.O_RDONLY); try { if (!WIN) await dir.sync(); } finally { await dir.close(); }
+    // Windows has no directory-handle fsync (EPERM), so the write is not ordered against a
+    // directory flush there and a power loss can still tear it. No portable alternative exists.
+    if (!WIN) { const dir = await fs.open(this.root, constants.O_RDONLY); try { await dir.sync(); } finally { await dir.close(); } }
     return row;
   }
   async get(roomName) {
@@ -62,7 +64,9 @@ export class RoomRegistry {
     const handle = await fs.open(tmp, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
     try { await handle.writeFile(`${JSON.stringify(next, null, 2)}\n`); await handle.sync(); } finally { await handle.close(); }
     await fs.rename(tmp, target);
-    const dir = await fs.open(this.root, constants.O_RDONLY); try { if (!WIN) await dir.sync(); } finally { await dir.close(); }
+    // Windows has no directory-handle fsync (EPERM), so the write is not ordered against a
+    // directory flush there and a power loss can still tear it. No portable alternative exists.
+    if (!WIN) { const dir = await fs.open(this.root, constants.O_RDONLY); try { await dir.sync(); } finally { await dir.close(); } }
     return next;
   }
 }

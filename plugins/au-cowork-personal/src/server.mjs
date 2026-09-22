@@ -16,7 +16,7 @@ import { CoworkSession } from './session.mjs';
 import { RoomRegistry } from './registry.mjs';
 import { MonitorManager } from './monitor-manager.mjs';
 
-export const VERSION = '1.3.1';
+export const VERSION = '1.3.2';
 const text = (data) => ({ content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data });
 const ok = (data) => text({ ok: true, data, request_id: randomUUID() });
 const fail = (code, message, retryable = false, action) => text({ ok: false, error: { code, message, retryable, ...(action ? { action } : {}) }, request_id: randomUUID() });
@@ -32,7 +32,7 @@ const daemonFailure = (error) => error?.name === 'DaemonUnavailableError' || ['E
 const uploadTooLarge = (error) => /uploadFile\([^)]*\): upload is \d+ bytes, at or over the transport's \d+-byte envelope budget/i.test(error?.message ?? '');
 
 export async function createRuntime({ session = new CoworkSession(), server: injectedServer, registry: injectedRegistry, connections: injectedConnections, productOptions } = {}) {
-  const connections=injectedConnections??session.connections??sessionRegistry(session,ConnectionRegistry,['init','list','get','reserve','update']);session.connections=connections;
+  const connections=injectedConnections??session.connections??sessionRegistry(session,ConnectionRegistry,['init','list','get','reserve','update','attempted']);session.connections=connections;
   const registry=injectedRegistry??sessionRegistry(session,RoomRegistry,['init','list','get','create','updateState']);
   if(injectedRegistry){await registry.init();await registry.list();}
   const server = injectedServer ?? new McpServer({ name: 'au-cowork-personal', version: VERSION }, { capabilities: { logging: {} }, instructions: remoteSetupInstructions+"\n"+monitorInstructions });
@@ -66,7 +66,8 @@ export async function createRuntime({ session = new CoworkSession(), server: inj
       const message = code === 'daemon_unavailable' ? 'The shared ours daemon is unavailable; ask the operator to start it, then retry.'
         : code === 'file_unreadable' ? 'The file cannot be read by this process. Check the path and permissions, then retry.'
           : code === 'file_too_large' ? 'The file exceeds the ours transport limit.'
-            : code === 'internal_error' ? 'Cowork could not complete the operation; use request_id for diagnostics.' : code;
+            : code === 'invite_already_attempted' ? 'This invite was already used for a redemption attempt. Reconnect with its connection_id instead; a reserve that never reached the daemon releases the invite automatically after 30 seconds.'
+              : code === 'internal_error' ? 'Cowork could not complete the operation; use request_id for diagnostics.' : code;
       const result=fail(code,message,code==='daemon_unavailable');if(error.connection_id){const value=JSON.parse(result.content[0].text);value.error.connection_id=error.connection_id;value.error.identity_name=error.identity_name;value.error.identity_retained=error.identity_retained;return text(value);}return result;
     }
   };

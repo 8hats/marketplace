@@ -26,6 +26,14 @@ function address(value){
 function tokenValue(value){if(typeof value!=='string'||!value||/\s/.test(value)||value.length>8192)throw invalid();return value;}
 function readToken(file){
  let fd;try{
+  // O_NOFOLLOW is absent from fs.constants on Windows, so the flag below degrades to a plain
+  // read and the documented "symlinks are rejected" silently stops holding there. This lstat
+  // restores the rejection. It checks the FINAL component only — not the component walk used
+  // for the registry paths — because tokenFile is operator-supplied and may legitimately sit
+  // behind a redirected profile or mapped drive, which a full walk would reject outright.
+  // It races with the open (unavoidable: Node exposes no open-without-following on Windows)
+  // and cannot see hardlinks. On POSIX the O_NOFOLLOW below remains the real, atomic guard.
+  if(fs.lstatSync(file).isSymbolicLink())throw invalid();
   fd=fs.openSync(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW);
   const stat=fs.fstatSync(fd);
   if(!stat.isFile()||(process.platform!=='win32'&&(stat.mode&0o077)!==0)||(process.getuid&&stat.uid!==process.getuid())||stat.size>8192)throw invalid();

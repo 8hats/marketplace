@@ -1,3 +1,32 @@
+## 1.3.2 — Windows follow-ups to 1.3.1
+
+- Recover from an orphaned invite marker. A reserve interrupted between its two writes (the
+  failure 1.3.1 fixed on Windows) left an `invite-<sha>.attempt` marker with no connection
+  record, permanently rejecting that one-use invite with `invite_already_attempted`. Such a
+  marker is now reclaimed once it is demonstrably stale. Upgrading is enough; no manual cleanup.
+- Guard the reclaim against replaying a real redemption. The marker now records a stage and is
+  flipped to `attempted` before the invite is handed to the daemon, so a marker that ever
+  reached the daemon is never reclaimable even if its connection record is deleted by hand.
+  Reclaim additionally requires the marker to be older than 30 seconds, so a concurrent reserve
+  in flight is never stolen. Markers written before 1.3.2 carry no stage and are read as
+  `reserved`; for those only, deleting a connection record by hand can still replay an invite.
+- `invite_already_attempted` now explains itself and names the recovery path.
+- Reject a symlinked token file and a symlinked connection record explicitly. `O_NOFOLLOW` is
+  absent from `fs.constants` on Windows, so the flag silently degraded to a plain read there.
+  On POSIX this only replaces a raw `ELOOP` with the typed `connection_registry_unsafe`.
+- Document the Windows token-file caveat honestly. `docs/remote-ours.md` promised owner and
+  permission enforcement that Windows cannot provide; it now states what is actually checked
+  and makes ACL restriction the operator's responsibility. The guarantee is unchanged on
+  POSIX and this release does not add a Windows equivalent.
+- Make the Windows-only test skips visible. Three tests were hidden behind `if` statements or
+  could not hold on Windows, so a Windows run reported them as passing. They now report as
+  skipped. Note this proves the suite RUNS on Windows, not that the skipped assertions hold.
+- Add a `windows-latest` CI job so the platform claim is checked by a runner rather than asserted.
+- Pin the advertised server version to `package.json`. The version lives in four places and only
+  three were tested, so a partial bump could leave clients told the previous version.
+- Stop opening the registry directory on Windows only to skip the fsync. Writes there are not
+  ordered against a directory flush; this is now stated in the code.
+
 ## 1.3.0 — remote daemon connections
 
 ## 1.3.1

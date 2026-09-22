@@ -17,6 +17,9 @@ export async function connectInvite(session, invite, profile, registry=session.c
     if(identity.name!==row.identity_name||!(/^[A-Fa-f0-9]{64}$/.test(identity.cid)))reject('identity_in_use');
     row=await registry.update(row,{state:'identity_created',identity_cid:identity.cid.toUpperCase()});
     row=await registry.update(row,{state:'invite_attempted'});
+    // Mark the invite itself, not just the record: once the marker reaches 'attempted' it is
+    // never reclaimable, so deleting the connection record can never replay this redemption.
+    await registry.attempted(invite,row.connection_id);
     const contact=await client.addContact({invite});
     const contacts=await client.listContacts(),ready=contacts.contacts?.some(c=>c.container_id.toUpperCase()===contact.cid.toUpperCase());
     row=await registry.update(row,{state:'connected',room_name:contact.display,contact_cid:contact.cid.toUpperCase(),membership_state:ready?'ready':'connecting'});
