@@ -22,12 +22,14 @@
   could not hold on Windows, so a Windows run reported them as passing. They now report as
   skipped. Note this proves the suite RUNS on Windows, not that the skipped assertions hold.
 - Add a `windows-latest` CI job so the platform claim is checked by a runner rather than asserted.
-- Verify on Windows that the MCP server actually serves. `scripts/stdio-probe.mjs` writes a real
-  `initialize` frame to a spawned entry point; on the Windows runner both the bundle and the
-  source answer it in full. An earlier diagnostic suggested the bundle died at startup there --
-  that was an artifact of the probe discarding stdout, which makes the server exit on Windows.
-  The remaining `dist-smoke` skip is an MCP SDK client-transport limitation in CI, not a server
-  fault. Still unverified by a human on real Windows hardware.
+- **KNOWN DEFECT: the standalone bundle does not serve MCP on Windows when installed.** Probed on
+  a Windows runner with a real `initialize` frame: from inside the repo, with `node_modules` beside
+  it, both the bundle and the source answer in full. Copied to a directory with no `node_modules`
+  -- which is exactly how the plugin is installed, since `node_modules` is not shipped -- the bundle
+  exits 0 immediately without serving. Linux answers in both cases. The bundle retains runtime
+  `require('ajv/dist/runtime/...')` calls that resolve out of `node_modules`, which is the most
+  likely cause. Reproduce with `node scripts/stdio-probe.mjs dist/cowork-mcp.mjs --isolate`.
+  This release therefore does NOT establish that the plugin works on Windows.
 
 - Pin the advertised server version to `package.json`. The version lives in four places and only
   three were tested, so a partial bump could leave clients told the previous version.
