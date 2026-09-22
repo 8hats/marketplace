@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,rm,stat,symlink} from 'node:fs/promises';
+import {mkdtemp,rm,stat,symlink,readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
@@ -30,7 +30,7 @@ function daemon(){
 }
 async function open(factory,stateDir,network,remote=false){
  const session=new CoworkSession({resolve:()=>({expectStateDir:stateDir}),attach:network.attach,...remote?{remote:{url:'https://remote.example/gate'},attachRemoteFn:(_config,args)=>network.attach(args)}:{}});
- const connections=remote?sessionRegistry(session,ConnectionRegistry,['list','get','reserve','update'],{home:stateDir}):new ConnectionRegistry(stateDir);
+ const connections=remote?sessionRegistry(session,ConnectionRegistry,['list','get','reserve','update','attempted'],{home:stateDir}):new ConnectionRegistry(stateDir);
  const runtime=await factory({session,registry:legacy,connections}),host=new Client({name:'test',version:'1'}),[a,b]=InMemoryTransport.createLinkedPair();await(runtime.server.server??runtime.server).connect(a);await host.connect(b);
  return {session,call:async(name,args={})=>JSON.parse((await host.callTool({name,arguments:args})).content[0].text),close:async()=>{await host.close();await runtime.shutdown();}};
 }
@@ -40,6 +40,11 @@ for(const [profile,factory] of [['personal',personal],['moderator',moderator]])t
   b=await open(factory,dir,network);const listed=(await b.call('list_rooms')).data.rooms;assert.equal(listed.length,1);assert.equal(listed[0].connection_id,connected.connection_id);
   const resumed=(await b.call('connect_to_room',{connection_id:connected.connection_id})).data;assert.equal(resumed.agent_cid,connected.agent_cid);assert.equal(resumed.room_cid,room);assert.equal(resumed.bootstrap.status,'unchecked');assert.deepEqual(network.counts(),{creates:1,redeems:1,releases:1});
   await b.call('disconnect_from_room');const duplicate=await b.call('connect_to_room',{invite:'first'});assert.equal(duplicate.error.code,'invite_already_attempted');assert.equal(network.counts().redeems,1);assert.equal(network.identities.size,1);
+  // End-to-end pin for the redeem marker: the runtime must reach 'attempted' through whatever
+  // registry proxy it was built with. A proxy that omits the method would silently disable the
+  // replay guard, so assert the on-disk evidence rather than trusting the method list.
+  const registry=new ConnectionRegistry(dir);
+  assert.equal(JSON.parse(await readFile(registry.attemptFile('first'),'utf8')).stage,'attempted');
  }finally{await a?.close();await b?.close();await rm(dir,{recursive:true,force:true});}
 });
 test('two Personal agents in one folder require exact selection and reject occupied identity without force',async()=>{
@@ -57,7 +62,7 @@ test('uncertain redemption retains identity and durable attempt; restart cannot 
   assert.equal((await b.call('connect_to_room',{connection_id:failed.error.connection_id})).error.code,'connection_outcome_unresolved');assert.equal((await b.call('connect_to_room',{invite:'uncertain'})).error.code,'invite_already_attempted');assert.equal(network.counts().redeems,1);assert.equal(network.identities.size,1);
  }finally{await a?.close();await b?.close();await rm(dir,{recursive:true,force:true});}
 });
-test('registry uses private files and rejects symlink records',async()=>{
+test('registry uses private files and rejects symlink records',{skip:process.platform==='win32'&&'stat reports mode 0666 for every file on Windows and file symlinks need admin or Developer Mode'},async()=>{
  const dir=await mkdtemp(join(tmpdir(),'au-registry-'));try{const registry=new ConnectionRegistry(dir),row=await registry.reserve('personal','invite');assert.equal((await stat(registry.root)).mode&0o777,0o700);assert.equal((await stat(registry.file(row.connection_id))).mode&0o777,0o600);await rm(registry.file(row.connection_id));await symlink('/etc/passwd',registry.file(row.connection_id));await assert.rejects(registry.get(row.connection_id,'personal'));}finally{await rm(dir,{recursive:true,force:true});}
 });
 test('reconnect rejects a changed stored identity CID without redeeming or replacing it',async()=>{
