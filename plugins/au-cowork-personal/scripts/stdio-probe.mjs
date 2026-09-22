@@ -57,3 +57,7 @@ console.log(`stdout   : ${out.trim().slice(0,400)||'(none)'}`);
 console.log(`stderr   : ${err.trim().slice(0,800)||'(none)'}`);
 child.kill();child.stdin.destroy();
 await fs.rm(home,{recursive:true,force:true});
+// Exit non-zero when the server failed to serve, so this can be wired as a real check rather
+// than a log nobody reads. A probe that always exits 0 protects nothing while looking like it does.
+const healthy=responded||((ignoreStdout||noFrame)&&exit===null);
+if(!healthy)process.exitCode=1;

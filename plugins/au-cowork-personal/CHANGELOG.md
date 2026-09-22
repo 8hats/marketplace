@@ -29,7 +29,8 @@
   exits 0 immediately without serving. Linux answers in both cases. The cause is NOT established:
   the bundle does retain runtime `require('ajv/dist/runtime/...')` calls that resolve out of
   `node_modules`, but Linux serves fine in the same isolated layout, so startup evidently does not
-  reach them and that explanation does not by itself account for the Windows exit. Reproduce with
+  reach them and that explanation does not by itself account for the Windows exit. Nothing so far
+  shows this is specific to the CI runner rather than to Windows generally. Reproduce with
   `node scripts/stdio-probe.mjs dist/cowork-mcp.mjs --isolate`.
   This release therefore does NOT establish that the plugin works on Windows.
 
