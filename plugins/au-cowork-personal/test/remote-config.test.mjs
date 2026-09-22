@@ -43,7 +43,7 @@ test('project configuration uses protected token file and rejects unsafe permiss
   const file=path.join(cwd,'.au-ours.json'),token=path.join(cwd,'token');
   fs.writeFileSync(token,secret,{mode:0o600});fs.writeFileSync(file,JSON.stringify({url:environment.AU_OURS_URL,tokenFile:'token'}));
   const selected=resolveRemoteConfig({env:{},cwd});assert.equal(selected.token(),secret);
-  fs.chmodSync(token,0o644);assert.throws(()=>selected.token(),{code:'remote_configuration'});
+  if(process.platform!=='win32'){fs.chmodSync(token,0o644);assert.throws(()=>selected.token(),{code:'remote_configuration'});}
   fs.writeFileSync(file,'{');assert.throws(()=>resolveRemoteConfig({env:{},cwd}),{code:'remote_configuration'});
  }finally{fs.rmSync(cwd,{recursive:true,force:true});}
 });

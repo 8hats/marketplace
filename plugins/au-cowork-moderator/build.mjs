@@ -1,13 +1,14 @@
 import { build } from 'esbuild';
+import { fileURLToPath } from 'node:url';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 
 await rm(new URL('./dist/', import.meta.url), { recursive: true, force: true });
 await mkdir(new URL('./dist/', import.meta.url), { recursive: true });
 const result = await build({
-  entryPoints: [new URL('./src/server.mjs', import.meta.url).pathname],
-  outfile: new URL('./dist/cowork-mcp.mjs', import.meta.url).pathname,
+  entryPoints: [fileURLToPath(new URL('./src/server.mjs', import.meta.url))],
+  outfile: fileURLToPath(new URL('./dist/cowork-mcp.mjs', import.meta.url)),
   bundle: true,
-  nodePaths: [new URL('./node_modules/', import.meta.url).pathname],
+  nodePaths: [fileURLToPath(new URL('./node_modules/', import.meta.url))],
   platform: 'node',
   target: 'node22',
   format: 'esm',

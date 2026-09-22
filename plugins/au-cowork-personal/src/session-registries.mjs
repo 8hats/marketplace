@@ -16,7 +16,7 @@ async function remoteStateDir(key,home){
    if(error.code!=='ENOENT'||!(current===base||current===target))throw error;
    await fs.mkdir(current,{mode:0o700}).catch(error=>{if(error.code!=='EEXIST')throw error;});stat=await fs.lstat(current);
   }
-  if(stat.isSymbolicLink()||!stat.isDirectory()||((current===base||current===target)&&(stat.uid!==process.getuid()||(stat.mode&0o077))))throw Object.assign(new Error('connection_registry_unsafe'),{code:'connection_registry_unsafe'});
+  if(stat.isSymbolicLink()||!stat.isDirectory()||((current===base||current===target)&&process.platform!=='win32'&&(stat.uid!==process.getuid()||(stat.mode&0o077))))throw Object.assign(new Error('connection_registry_unsafe'),{code:'connection_registry_unsafe'});
  }
  return target;
 }

@@ -28,7 +28,7 @@ function readToken(file){
  let fd;try{
   fd=fs.openSync(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW);
   const stat=fs.fstatSync(fd);
-  if(!stat.isFile()||(stat.mode&0o077)!==0||(process.getuid&&stat.uid!==process.getuid())||stat.size>8192)throw invalid();
+  if(!stat.isFile()||(process.platform!=='win32'&&(stat.mode&0o077)!==0)||(process.getuid&&stat.uid!==process.getuid())||stat.size>8192)throw invalid();
   return tokenValue(fs.readFileSync(fd,'utf8').trim());
  }catch{throw invalid();}finally{if(fd!==undefined)fs.closeSync(fd);}
 }
