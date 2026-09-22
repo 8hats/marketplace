@@ -40,3 +40,16 @@ test('the distributable carries exact pinned third-party license texts', async (
   const { stdout } = await exec('npm', ['pack', '--dry-run', '--json'], { cwd: new URL('..', import.meta.url), shell: process.platform === 'win32' });
   const packed = JSON.parse(stdout)[0].files.map((row) => row.path); assert.ok(packed.includes('dist/THIRD_PARTY_LICENSES.txt')); assert.ok(packed.includes('dist/BUNDLED_PACKAGES.json'));
 });
+
+// The main-module guard decides whether the server connects its transport at all, and when it is
+// built by string concatenation it fails silently: the module loads, connects nothing, and exits 0
+// with an empty stderr. au-cowork-personal shipped that form and did not serve on Windows once
+// installed. The dist-level regression test guards the built artifact; this guards the line, so a
+// source edit fails at `npm test` instead of surfacing later as "dist differs".
+test('neither plugin builds a main-module file URL by hand', async () => {
+  for (const entry of ['../src/server.mjs', '../../au-cowork-moderator/src/server.mjs']) {
+    const source = await fs.readFile(new URL(entry, import.meta.url), 'utf8');
+    assert.ok(!/new URL\(\s*[`'"]file:\/\//.test(source), `${entry} builds a file URL from a string; use pathToFileURL, which handles paths the URL parser reads specially ('#', '?')`);
+    assert.match(source, /pathToFileURL\(process\.argv\[1\]\)\.href/, `${entry} must compare import.meta.url against pathToFileURL(process.argv[1]).href`);
+  }
+});

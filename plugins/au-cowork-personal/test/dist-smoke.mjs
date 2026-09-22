@@ -16,7 +16,9 @@ const home={HOME:dir,USERPROFILE:dir,OURS_STATE_DIR:path.join(dir,'ours')};
 // what it printed. Without this, a bundle that dies at startup and a transport that cannot
 // spawn it are both just "MCP error -32000: Connection closed".
 async function diagnose(){
- const probe=spawn(process.execPath,[target],{env:{...process.env,...home},stdio:['pipe','ignore','pipe']});
+ // stdout must be piped, not ignored: with stdout discarded the server exits on Windows,
+ // which previously read as 'the bundle dies at startup' and was wrong.
+ const probe=spawn(process.execPath,[target],{env:{...process.env,...home},stdio:['pipe','pipe','pipe']});
  let err='';probe.stderr.on('data',chunk=>{err+=chunk;});
  const outcome=await new Promise(resolve=>{
   // stdin stays open: an MCP stdio server exits on EOF, which is correct, not a crash.
@@ -27,7 +29,7 @@ async function diagnose(){
  probe.kill();probe.stdin.destroy();probe.stderr.destroy();
  return `bundle ${outcome}\n--- bundle stderr ---\n${err||'(none)'}`;
 }
-test('the standalone bundle serves MCP with no node_modules beside it',{skip:process.platform==='win32'&&'the MCP stdio handshake does not complete on Windows in CI; the bundle itself starts and exits 0 with no stderr, so this is a harness/platform interaction rather than a bundle fault -- unresolved, see PR #15'},async()=>{
+test('the standalone bundle serves MCP with no node_modules beside it',async()=>{
 const transport=new StdioClientTransport({command:process.execPath,args:[target],env:{...process.env,...home},stderr:'pipe'});
 const client=new Client({name:'standalone-bundle-test',version:'1'});
 try{
@@ -37,4 +39,33 @@ try{
  error.message=`${error.message}\n${await diagnose()}`;
  throw error;
 }finally{await client.close().catch(()=>{});await transport.close().catch(()=>{});await fs.rm(dir,{recursive:true,force:true});}
+});
+
+// The main-module guard decides whether the server connects its transport at all. It used to
+// build a file URL by hand (`new URL('file://'+process.argv[1])`), so any path the URL parser
+// reads specially -- '#' becomes a fragment, '?' a query -- made the comparison fail. The module
+// then loaded, connected nothing and exited 0 with an empty stderr: no crash, no output, no
+// server. The moderator plugin already used pathToFileURL; this pins the personal one.
+test('the bundle still serves from a path the URL parser would mangle',async()=>{
+ // '?' is not a legal filename character on Windows, so that case is POSIX-only. '#' is legal
+ // on both and is the one that actually broke the guard.
+ const awkwardNames=['hash#dir','space dir',...(process.platform==='win32'?[]:['query?dir'])];
+ for(const awkward of awkwardNames){
+  const base=await fs.mkdtemp(path.join(os.tmpdir(),'cowork-path-'));
+  const nest=path.join(base,awkward);
+  try{
+   await fs.mkdir(nest,{recursive:true});
+   const entry=path.join(nest,'cowork-mcp.mjs');
+   await fs.copyFile(new URL('../dist/cowork-mcp.mjs',import.meta.url),entry);
+   const child=spawn(process.execPath,[entry],{env:{...process.env,HOME:base,USERPROFILE:base},stdio:['pipe','pipe','pipe']});
+   let out='';child.stdout.on('data',c=>{out+=c;});
+   let exited=null;child.once('exit',c=>{exited=c;});
+   await new Promise(r=>setTimeout(r,400));
+   child.stdin.write(JSON.stringify({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2024-11-05',capabilities:{},clientInfo:{name:'path-test',version:'1'}}})+'\n');
+   const deadline=Date.now()+8000;
+   while(Date.now()<deadline&&exited===null&&!out.includes('"id":1'))await new Promise(r=>setTimeout(r,50));
+   child.kill();child.stdin.destroy();
+   assert.ok(out.includes('"id":1'),`the bundle did not serve from a path containing ${JSON.stringify(awkward)} (exit ${exited}); the main-module guard likely failed to match`);
+  }finally{await fs.rm(base,{recursive:true,force:true});}
+ }
 });

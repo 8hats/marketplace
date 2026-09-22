@@ -40,6 +40,35 @@ jobs:
           node --test --test-concurrency=1
           node build.mjs
 
+      # Does the plugin actually serve MCP on Windows? Answered by probe, not by argument:
+      # both the bundle and the source answer a real `initialize` frame here. These two are a
+      # REAL check -- the probe exits non-zero if a server fails to serve -- so a regression
+      # turns the job red instead of hiding in a log.
+      - name: Windows MCP stdio probe
+        shell: bash
+        working-directory: plugins/au-cowork-personal
+        run: |
+          node scripts/stdio-probe.mjs dist/cowork-mcp.mjs
+          echo
+          node scripts/stdio-probe.mjs src/server.mjs
+
+      # The installed configuration: bundle copied somewhere with no node_modules beside it.
+      # This used to exit 0 without serving on Windows -- the main-module guard built its file
+      # URL by string concatenation and the comparison failed, so the transport never connected.
+      # Now a real check, so that regression cannot come back quietly.
+      - name: Windows bundle-in-isolation probe
+        shell: bash
+        working-directory: plugins/au-cowork-personal
+        run: |
+          node scripts/stdio-probe.mjs dist/cowork-mcp.mjs --isolate
+          echo
+          # Records a genuine platform difference found on the way to that bug: with stdout
+          # discarded the server exits on Windows but stays alive on Linux. Harmless for real
+          # clients, which always pipe stdout.
+          node scripts/stdio-probe.mjs dist/cowork-mcp.mjs --no-frame
+          echo
+          node scripts/stdio-probe.mjs dist/cowork-mcp.mjs --ignore-stdout --no-frame
+
   validate:
     runs-on: ubuntu-latest
     steps:
