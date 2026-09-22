@@ -63,11 +63,13 @@ jobs:
         continue-on-error: true
         working-directory: plugins/au-cowork-personal
         run: |
-          node scripts/stdio-probe.mjs dist/cowork-mcp.mjs --isolate
-          echo
+          # The isolation probe runs LAST: it exits non-zero, and bash -e would otherwise abort
+          # the step before the two runs below ever execute.
           node scripts/stdio-probe.mjs dist/cowork-mcp.mjs --no-frame
           echo
           node scripts/stdio-probe.mjs dist/cowork-mcp.mjs --ignore-stdout --no-frame
+          echo
+          node scripts/stdio-probe.mjs dist/cowork-mcp.mjs --isolate
 
   validate:
     runs-on: ubuntu-latest
