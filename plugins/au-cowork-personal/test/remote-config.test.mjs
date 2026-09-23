@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { resolveRemoteConfig, remoteTransport, attachRemote } from '../src/remote-config.mjs';
+import { resolveRemoteConfig, remoteTransport, attachRemote, remoteDiagnostic } from '../src/remote-config.mjs';
 
 const secret='test-only-secret';
 const environment={AU_OURS_URL:'https://daemon.example/gate/',AU_OURS_API_TOKEN:secret};
@@ -77,4 +77,19 @@ test('authentication, transport and unsupported daemon failures are actionable a
  for(const [fetch,code] of [[async()=>new Response(secret,{status:401}),'remote_authentication'],[async()=>{throw Error(secret);},'remote_unavailable'],[async()=>Response.json({name:'ours',version:'3.8.0'}),'remote_unsupported']]){
   await assert.rejects(attachRemote(selection,{leaseToken:'test-owner',fetch}),e=>e.code===code&&!e.message.includes(secret));
  }
+});
+
+test('a missing AU_OURS_CONFIG file names the resolved path it looked at', () => {
+  // The value is resolved against the MCP server's cwd — the INSTALLED PLUGIN ROOT — so a relative
+  // value, or an MSYS-style /c/Users/... on Windows, silently becomes a path inside the plugin
+  // directory and the real file is never read. Without the resolved path this reads as "the daemon
+  // is misconfigured" rather than "we disagree about which file that was". Cost one QA run a retry.
+  let thrown;
+  try { resolveRemoteConfig({ env: { AU_OURS_CONFIG: '/c/Users/you/au-ours.json' }, cwd: '/plugin/root' }); }
+  catch (error) { thrown = error; }
+  assert.ok(thrown, 'a missing explicit config file must throw');
+  const surfaced = remoteDiagnostic(thrown);
+  assert.equal(surfaced.code, 'remote_configuration');
+  assert.match(surfaced.message, /\/c\/Users\/you\/au-ours\.json/, 'must echo the value that was given');
+  assert.match(surfaced.message, /C:\/Users/, 'must show the Windows drive-letter form');
 });

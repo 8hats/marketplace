@@ -1,3 +1,25 @@
+## 1.3.5 — a transient lockout no longer reads as permanent
+
+- `identity_in_use` is reported as **retryable**, with an action telling you to wait and warning you
+  not to force-rebind. It was `retryable: false`, which is false: a session that dies without
+  disconnecting leaves the daemon holding the lease and it clears by itself. Telling a caller the
+  condition was permanent did not merely waste time — it sent an agent looking for another way out,
+  into a force-rebind that *succeeds* and leaves the identity without its room contact, which no
+  tool can restore. The escape was worse than the lockout. Measured on a clean-Windows QA run: over
+  an hour held with no process alive, ~50 minutes of retries, one identity permanently destroyed.
+
+- A missing `AU_OURS_CONFIG` file now names the path it actually looked at, and the cwd it resolved
+  against. The value is resolved against the MCP server's working directory — the *installed plugin
+  root* — so a relative path, or an MSYS-style `/c/Users/...` on Windows, silently becomes a path
+  inside the plugin directory and your real config is never read. The failure surfaced as
+  `remote_configuration`, which reads like "the daemon is misconfigured" rather than "we disagree
+  about which file that was". No path translation is attempted; guessing intent would be worse.
+
+- `.gitattributes` keeps committed `dist/` bundles byte-identical across platforms. A Windows
+  checkout was converting LF to CRLF, so a sha256 taken there disagreed with the one CI built —
+  which briefly looked like a QA run had tested the wrong artifact. Execution was never affected;
+  verifiability was.
+
 ## 1.3.4 — an unmapped failure now leaves a trace
 
 - Make `request_id` mean something. An unmapped error collapses to `internal_error`, whose message

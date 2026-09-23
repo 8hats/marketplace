@@ -1,6 +1,6 @@
 {
   "name": "au-cowork-personal",
-  "version": "1.3.4",
+  "version": "1.3.5",
   "description": "Room-centric collaboration over the shared ours.network daemon.",
   "author": {
     "name": "Agent University"
