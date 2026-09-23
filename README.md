@@ -37,6 +37,10 @@ not open to the public.
 
 Node ≥ 20 must be on `PATH`; the local companion runs under it.
 
+## Install — 8hats Harness
+
+See [Harness compatibility](docs/harness.md) for reviewed MCP integration, immutable installs, and supported capabilities.
+
 ## Install — Claude Code
 
 ```text
