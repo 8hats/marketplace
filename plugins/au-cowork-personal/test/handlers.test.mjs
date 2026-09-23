@@ -86,3 +86,32 @@ test('session tools reject unbound status and redact SDK failures',async()=>{
  s.bound={room_name:'Room',identity_name:'Tutor',contact_cid:CID,membership_state:'ready'};
  const result=await srv.tools.get('get_room_status').fn({});assert.equal(result.structuredContent.ok,false);assert.doesNotMatch(JSON.stringify(result),/private|secret/);
 });
+
+// An unmapped error collapses to `internal_error`, whose message tells the caller to "use
+// request_id for diagnostics" -- while that id was written nowhere at all. Three separate people
+// resorted to patching the shipped bundle to see through it. The correlation now goes to the
+// operator's stderr; the client payload must stay opaque, because PUBLIC_CODES is an allowlist
+// that deliberately keeps internal detail away from an MCP client.
+test('an unmapped failure correlates its request_id on stderr without leaking detail to the client', async () => {
+  const c = client(); const s = session(c); const srv = new FakeServer();
+  const secret = 'C:\\Users\\someone\\private-token-path';
+  const reg = registry();
+  const runtime = await createRuntime({ session: s, server: srv, registry: reg });
+  reg.list = async () => { throw Object.assign(new Error(`bespoke failure at ${secret}`), { code: 'not_a_public_code' }); };
+  const written = []; const real = process.stderr.write.bind(process.stderr);
+  process.stderr.write = (chunk) => { written.push(String(chunk)); return true; };
+  let result; try { result = await srv.tools.get('list_rooms').fn({}); } finally { process.stderr.write = real; }
+
+  const payload = result.structuredContent;
+  assert.equal(payload.ok, false);
+  assert.equal(payload.error.code, 'internal_error');
+  assert.ok(!JSON.stringify(payload).includes(secret), 'client payload must not carry internal detail');
+  assert.ok(!JSON.stringify(payload).includes('not_a_public_code'), 'client payload must not carry the unmapped code');
+
+  const line = written.map((w) => w.trim()).find((w) => w.includes('"event":"internal_error"'));
+  assert.ok(line, `expected an internal_error diagnostic on stderr, got: ${JSON.stringify(written)}`);
+  const logged = JSON.parse(line);
+  assert.equal(logged.request_id, payload.request_id, 'stderr must correlate with the id handed to the client');
+  assert.equal(logged.code, 'not_a_public_code', 'stderr must carry the real code');
+  assert.ok(logged.message.includes(secret), 'stderr is the operator-side channel and may carry detail');
+});

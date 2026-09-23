@@ -17,10 +17,18 @@ import { CoworkSession } from './session.mjs';
 import { RoomRegistry } from './registry.mjs';
 import { MonitorManager } from './monitor-manager.mjs';
 
-export const VERSION = '1.3.3';
+export const VERSION = '1.3.4';
 const text = (data) => ({ content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data });
 const ok = (data) => text({ ok: true, data, request_id: randomUUID() });
-const fail = (code, message, retryable = false, action) => text({ ok: false, error: { code, message, retryable, ...(action ? { action } : {}) }, request_id: randomUUID() });
+const fail = (code, message, retryable = false, action, requestId = randomUUID()) => text({ ok: false, error: { code, message, retryable, ...(action ? { action } : {}) }, request_id: requestId });
+// An error that collapses to internal_error is by definition one nobody anticipated, and the client
+// is told to "use request_id for diagnostics" while that id correlates with nothing anywhere. Emit
+// the correlation to the operator's stderr so the id means something. The CLIENT payload stays
+// exactly as it was: PUBLIC_CODES is an allowlist that keeps internal detail away from an MCP
+// client, and widening it here would trade an opacity bug for a disclosure one. Not gated behind a
+// debug flag -- internal_error is rare by construction, and a diagnostic you must already know to
+// enable does not help the person meeting it for the first time.
+const diagnose = (requestId, error) => process.stderr.write(`${JSON.stringify({ event: 'internal_error', request_id: requestId, code: error?.code ?? error?.name ?? 'unknown', message: String(error?.message ?? '').slice(0, 500) })}\n`);
 const identityTaken = (error) => /exists|taken|duplicate/i.test(error?.message ?? '');
 const PUBLIC_CODES = new Set(['connection_not_found','connection_outcome_unresolved','connection_selection_required','connection_registry_unavailable','connection_registry_unsafe','connection_registry_corrupt','identity_mismatch','invite_already_attempted', 'invalid_request', 'session_already_bound', 'human_identity_required', 'identity_name_taken', 'room_name_conflict', 'room_not_found', 'identity_in_use', 'room_contact_missing', 'not_connected', 'room_not_ready', 'message_not_found', 'file_not_found', 'file_unreadable', 'file_too_large', 'daemon_unavailable']);
 const SDK_CODES = new Map([
@@ -69,7 +77,8 @@ export async function createRuntime({ session = new CoworkSession(), server: inj
           : code === 'file_too_large' ? 'The file exceeds the ours transport limit.'
             : code === 'invite_already_attempted' ? 'This invite was already used for a redemption attempt. Reconnect with its connection_id instead; a reserve that never reached the daemon releases the invite automatically after 30 seconds.'
               : code === 'internal_error' ? 'Cowork could not complete the operation; use request_id for diagnostics.' : code;
-      const result=fail(code,message,code==='daemon_unavailable');if(error.connection_id){const value=JSON.parse(result.content[0].text);value.error.connection_id=error.connection_id;value.error.identity_name=error.identity_name;value.error.identity_retained=error.identity_retained;return text(value);}return result;
+      const requestId=randomUUID();if(code==='internal_error')diagnose(requestId,error);
+      const result=fail(code,message,code==='daemon_unavailable',undefined,requestId);if(error.connection_id){const value=JSON.parse(result.content[0].text);value.error.connection_id=error.connection_id;value.error.identity_name=error.identity_name;value.error.identity_retained=error.identity_retained;return text(value);}return result;
     }
   };
   const register = (name, description, inputSchema, fn, readOnly = false) => { definitions.push({name,description,inputSchema:z.object(inputSchema)});return server.registerTool(name, {
