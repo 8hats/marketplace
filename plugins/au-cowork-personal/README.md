@@ -21,7 +21,7 @@ only in the MCP process and is acknowledged after identity/output checks.
 The committed distribution is self-contained and includes dependency licenses.
 Install via the existing marketplace mechanism; this local version has not been
 published. Critic accepted previous code49ff35d; the Owner-requested removal of
-old tools is subject to a new exact review. Implant is untouched.
+old tools is subject to a new exact review.
 
 ## Manual session connection
 

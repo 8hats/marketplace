@@ -205,11 +205,6 @@ jobs:
         with:
           node-version: 22
 
-      - name: bios-implant test suite
-        run: |
-          cd plugins/bios-implant
-          node --test
-
       # Runs before the installs deliberately: this test imports node builtins only, so it needs
       # no npm ci, and running it early means a drifted declaration fails in seconds and cannot be
       # masked by an install failure.

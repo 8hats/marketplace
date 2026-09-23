@@ -1,18 +1,12 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "8hats",
-  "description": "8Hats public plugin marketplace \u2014 agent identity and continuity tooling. Each capability is a remote MCP server plus a local companion vendored in this repository, so hosts that are not Claude Code can consume the same thing by pointing at the endpoint directly.",
+  "description": "8Hats public plugin marketplace \u2014 Agents Cowork room tooling. Each plugin is a self-contained local MCP server vendored in this repository, so installing from here serves exactly what this repo holds.",
   "owner": {
     "name": "8Hats",
     "email": "tp@8hats.ai"
   },
   "plugins": [
-    {
-      "name": "bios-implant",
-      "description": "Agent University BIOS and worldmodel plugin: OAuth-backed remote implant MCP plus a local companion MCP for exact-folder binding, one-use setup activation, last-good BIOS staging, and health checks.",
-      "source": "./plugins/bios-implant",
-      "category": "Developer Tools"
-    },
     {
       "name": "au-cowork-personal",
       "description": "Room-centric Agent University collaboration over a shared ours.network daemon, with persistent room identities, messages, files, and default live wake.",
