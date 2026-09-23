@@ -117,3 +117,30 @@ test('an unmapped failure correlates its request_id on stderr without leaking de
   assert.equal(logged.code, 'not_a_public_code', 'stderr must carry the real code');
   assert.ok(logged.message.includes(secret), 'the diagnostic channel carries the detail the client is denied');
 });
+
+test('identity_in_use is retryable and its action warns against force-rebind', async () => {
+  // F1 regression guard. A session that dies without disconnecting leaves the daemon holding the
+  // lease, and it clears on its own. Reporting retryable:false told callers to stop for good, which
+  // sent one agent hunting for an escape and into a force-rebind that PERMANENTLY destroyed the
+  // identity (it loses its room contact and no tool can restore one). Waiting is the only safe exit.
+  const c = client({ chooseIdentity: async () => { throw Object.assign(new Error('bound'), { code: 'BOUND_ELSEWHERE' }); } });
+  const srv = new FakeServer();
+  await createRuntime({ session: session(c), server: srv, registry: registry([{ room_name: 'Room', identity_name: 'Tutor', contact_cid: CID, membership_state: 'ready' }]) });
+  const out = (await srv.tools.get('connect_to_room').fn({ room_name: 'Room' })).structuredContent;
+  assert.equal(out.ok, false);
+  assert.equal(out.error.code, 'identity_in_use');
+  assert.equal(out.error.retryable, true, 'identity_in_use is transient — reporting it unretryable causes the force-rebind trap');
+  assert.match(out.error.action ?? '', /wait/i);
+  assert.match(out.error.action ?? '', /force/i, 'the action must warn against force-rebind');
+});
+
+test('widening retryable does not make unrelated codes retryable', async () => {
+  // Guards the F1 widening itself: adding one code must not flip the default for every other.
+  const srv = new FakeServer();
+  await createRuntime({ session: session(client()), server: srv, registry: registry() });
+  const out = (await srv.tools.get('connect_to_room').fn({ room_name: 'Nope' })).structuredContent;
+  assert.equal(out.ok, false);
+  assert.equal(out.error.code, 'room_not_found');
+  assert.equal(out.error.retryable, false, 'unrelated codes must stay non-retryable');
+  assert.equal(out.error.action, undefined, 'codes without an action must not gain one');
+});

@@ -17,10 +17,18 @@ import { CoworkSession } from './session.mjs';
 import { RoomRegistry } from './registry.mjs';
 import { MonitorManager } from './monitor-manager.mjs';
 
-export const VERSION = '1.3.4';
+export const VERSION = '1.3.5';
 const text = (data) => ({ content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data });
 const ok = (data) => text({ ok: true, data, request_id: randomUUID() });
 const fail = (code, message, retryable = false, action, requestId = randomUUID()) => text({ ok: false, error: { code, message, retryable, ...(action ? { action } : {}) }, request_id: requestId });
+// identity_in_use is TRANSIENT: a session that died without disconnecting leaves the daemon holding
+// the lease, and it clears on its own. Reporting it as non-retryable told callers to stop for good,
+// which sent one agent hunting for an escape and into a force-rebind that permanently destroyed the
+// identity (it loses its room contact, and nothing can put one back). Waiting is the only safe exit.
+const RETRYABLE_CODES = new Set(['daemon_unavailable', 'identity_in_use']);
+const RETRY_ACTIONS = {
+  identity_in_use: 'Another session still holds this identity. Wait and retry the same connection_id; the lease clears by itself. Do NOT force-rebind: it evicts the old session, the identity loses its room contact, and no tool can restore one.',
+};
 // An error that collapses to internal_error is by definition one nobody anticipated, and the client
 // is told to "use request_id for diagnostics" while that id correlates with nothing anywhere. Emit
 // the correlation so the id means something.
@@ -88,7 +96,7 @@ export async function createRuntime({ session = new CoworkSession(), server: inj
             : code === 'invite_already_attempted' ? 'This invite was already used for a redemption attempt. Reconnect with its connection_id instead; a reserve that never reached the daemon releases the invite automatically after 30 seconds.'
               : code === 'internal_error' ? 'Cowork could not complete the operation; use request_id for diagnostics.' : code;
       const requestId=randomUUID();if(code==='internal_error')diagnose(requestId,error);
-      const result=fail(code,message,code==='daemon_unavailable',undefined,requestId);if(error.connection_id){const value=JSON.parse(result.content[0].text);value.error.connection_id=error.connection_id;value.error.identity_name=error.identity_name;value.error.identity_retained=error.identity_retained;return text(value);}return result;
+      const result=fail(code,message,RETRYABLE_CODES.has(code),RETRY_ACTIONS[code],requestId);if(error.connection_id){const value=JSON.parse(result.content[0].text);value.error.connection_id=error.connection_id;value.error.identity_name=error.identity_name;value.error.identity_retained=error.identity_retained;return text(value);}return result;
     }
   };
   const register = (name, description, inputSchema, fn, readOnly = false) => { definitions.push({name,description,inputSchema:z.object(inputSchema)});return server.registerTool(name, {

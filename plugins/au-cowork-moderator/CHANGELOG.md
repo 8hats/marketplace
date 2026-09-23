@@ -1,3 +1,11 @@
+## 1.2.3 — inherits the clearer config-path error from the shared module
+
+- No change to this plugin's own source. It shares `remote-config.mjs` with au-cowork-personal,
+  and that module gained a fix in personal 1.3.5: a missing `AU_OURS_CONFIG` file now names the
+  path it actually resolved and the cwd it resolved against, instead of a bare
+  `remote_configuration`. The shipped bundle therefore changes, so the version moves with it —
+  a version should identify bytes, and 1.2.2 must not name two different bundles.
+
 ## 1.2.2 — Windows follow-ups to 1.2.1
 
 - This plugin bundles `au-cowork-personal`'s sources, so every 1.3.2 change to the connection

@@ -13,7 +13,9 @@ const messages={
  remote_request:'The remote daemon could not complete the request. Check daemon health and the operation inputs; server details were withheld.',
 };
 export const remoteError=code=>Object.assign(new Error(messages[code]),{code});
-export const remoteDiagnostic=error=>Object.hasOwn(messages,error?.code??'')?{code:error.code,message:messages[error.code]}:null;
+// `detail` is appended only when this module set it, so the canned message stays the only path by
+// which text reaches a client — raw daemon prose (which could echo secrets) is still never surfaced.
+export const remoteDiagnostic=error=>Object.hasOwn(messages,error?.code??'')?{code:error.code,message:typeof error.detail==='string'&&error.detail?`${messages[error.code]} ${error.detail}`:messages[error.code]}:null;
 const invalid=()=>remoteError('remote_configuration');
 function address(value){
  if(typeof value!=='string'||!value||value!==value.trim()||/[\\\s?#]/.test(value)||/%(?:2e|2f|5c)/i.test(value))throw invalid();
@@ -50,7 +52,19 @@ export function resolveRemoteConfig({env=process.env,cwd=process.cwd()}={}){
  try{
   const stat=fs.statSync(file);if(!stat.isFile()||stat.size>16384)throw invalid();
   config=JSON.parse(fs.readFileSync(file,'utf8'));
- }catch(error){if(error.code==='ENOENT'&&env.AU_OURS_CONFIG===undefined)return null;throw invalid();}
+ }catch(error){
+  if(error.code==='ENOENT'&&env.AU_OURS_CONFIG===undefined)return null;
+  // Name the path we actually looked at. AU_OURS_CONFIG is resolved against the MCP server's cwd —
+  // the INSTALLED PLUGIN ROOT — so a relative value, or an MSYS-style /c/Users/... on Windows,
+  // silently becomes a path under the plugin directory and the real file is never read. Without the
+  // resolved path in the message this reads as "the daemon is misconfigured" rather than "you and I
+  // disagree about which file that was". Deliberately no path translation: that would guess intent.
+  // `detail` rather than the message: remoteDiagnostic() replaces error.message with a canned string
+  // so raw server prose can never reach a client, and a message set here would be silently dropped.
+  // Only locally-constructed details are appended, so that guarantee still holds.
+  if(error.code==='ENOENT'&&env.AU_OURS_CONFIG!==undefined)throw Object.assign(invalid(),{detail:`No file at ${file}, resolved from AU_OURS_CONFIG=${env.AU_OURS_CONFIG} against cwd ${cwd}. Use an absolute path; on Windows a drive-letter path such as C:/Users/you/au-ours.json, not /c/Users/you/au-ours.json.`});
+  throw invalid();
+ }
  if(!config||typeof config!=='object'||Array.isArray(config)||Object.keys(config).sort().join(',')!=='tokenFile,url'||typeof config.tokenFile!=='string'||!config.tokenFile.trim())throw invalid();
  const url=address(config.url),tokenFile=path.resolve(path.dirname(file),config.tokenFile);
  readToken(tokenFile);

@@ -1,0 +1,7 @@
+# Committed bundles are verified by sha256 against what CI built. Without this, a Windows
+# checkout converts LF->CRLF and every hash taken there disagrees with the repository —
+# which cost one QA run a false "the agent did not run our bytes" scare. Execution is
+# unaffected (Node runs CRLF fine); what this protects is VERIFIABILITY, the whole reason
+# dist/ is committed and checked for reproducibility.
+* text=auto eol=lf
+plugins/*/dist/** -text

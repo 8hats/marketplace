@@ -16,7 +16,7 @@ import {CoworkSession} from '../../au-cowork-personal/src/session.mjs';
 import {ConnectionRegistry,connectionView} from '../../au-cowork-personal/src/connections.mjs';
 import {connectInvite,reconnectInvite} from '../../au-cowork-personal/src/invite-session.mjs';
 
-export const VERSION='1.2.2';
+export const VERSION='1.2.3';
 const cid=z.string().regex(/^[a-fA-F0-9]{64}$/);
 const configuration=z.object({identityName:z.string().min(1),identityCid:cid,roomCid:cid,roomName:z.string().min(1),monitor:z.boolean().optional()});
 export async function createRuntime({inputs,session: suppliedSession,connections:injectedConnections}={}){
