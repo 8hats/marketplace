@@ -109,3 +109,19 @@ test("selected file reads forward the explicit batch bound without allowing broa
   await assert.rejects(tools.get("ac_files").execute({ limit: 1 }));
   assert.equal(reads, 1);
 });
+
+// During a review of this plugin, one participant's long messages arrived twice — to two
+// independent recipients each — while a three-character message from the same sender arrived once.
+// That ruled out a per-recipient glitch and left the send path under suspicion. This pins the part
+// this repo owns: one ac_message call performs exactly one SDK send, so a resend can never be
+// introduced here without a test failing. It does not clear the SDK or the room's fanout, which
+// are outside this repo; it removes the plugin from the list of suspects and keeps it removed.
+test("one ac_message call performs exactly one SDK send", async () => {
+  const tools = new Map(); let sends = 0;
+  const sdk = { sendMessage: async () => { sends += 1; return { sent: true, wire_id: `w${sends}` }; } };
+  registerAgentTools((tool) => tools.set(tool.name, tool), sdk, { roomCid: room, timeoutMs: 1000, pollMs: 5 });
+  await tools.get("ac_message").execute({ text: "one" });
+  assert.equal(sends, 1, `ac_message performed ${sends} SDK sends for a single call`);
+  await tools.get("ac_message").execute({ text: "two" });
+  assert.equal(sends, 2, "a second call must add exactly one more send, not two");
+});
