@@ -23,12 +23,22 @@ const ok = (data) => text({ ok: true, data, request_id: randomUUID() });
 const fail = (code, message, retryable = false, action, requestId = randomUUID()) => text({ ok: false, error: { code, message, retryable, ...(action ? { action } : {}) }, request_id: requestId });
 // An error that collapses to internal_error is by definition one nobody anticipated, and the client
 // is told to "use request_id for diagnostics" while that id correlates with nothing anywhere. Emit
-// the correlation to the operator's stderr so the id means something. The CLIENT payload stays
-// exactly as it was: PUBLIC_CODES is an allowlist that keeps internal detail away from an MCP
-// client, and widening it here would trade an opacity bug for a disclosure one. Not gated behind a
-// debug flag -- internal_error is rare by construction, and a diagnostic you must already know to
-// enable does not help the person meeting it for the first time.
-const diagnose = (requestId, error) => process.stderr.write(`${JSON.stringify({ event: 'internal_error', request_id: requestId, code: error?.code ?? error?.name ?? 'unknown', message: String(error?.message ?? '').slice(0, 500) })}\n`);
+// the correlation so the id means something.
+//
+// What this boundary does and does NOT guarantee, because it is easy to get wrong and expensive to
+// get wrong later: an MCP client CAN read this stream -- StdioClientTransport takes a `stderr`
+// option and test/dist-smoke.mjs in this very repo pipes and reads it. stderr is therefore NOT
+// private. What it is, is OUT OF THE TOOL RESULT: it never enters the model's context, so an agent
+// cannot relay it onward into a room message, a PR body or a report. In a product whose agents
+// routinely paste tool output into shared rooms, that is the boundary that matters -- but do not
+// put a token or a full config dump here believing it unreachable. It isn't.
+// The client payload stays as it was: PUBLIC_CODES is an allowlist, and widening it would trade an
+// opacity bug for a disclosure one.
+// Not gated behind a debug flag -- internal_error is rare by construction, and a diagnostic you
+// must already know to enable does not help the person meeting it for the first time.
+// Scope is the tool-call handler: failures in createRuntime or the monitor path have no request_id,
+// and the monitor has its own stderr channel (monitor-manager.mjs).
+const diagnose = (requestId, error) => process.stderr.write(`${JSON.stringify({ event: 'internal_error', request_id: requestId, code: error?.code ?? error?.name ?? 'unknown', message: String(error?.message ?? error ?? '').slice(0, 500) })}\n`);
 const identityTaken = (error) => /exists|taken|duplicate/i.test(error?.message ?? '');
 const PUBLIC_CODES = new Set(['connection_not_found','connection_outcome_unresolved','connection_selection_required','connection_registry_unavailable','connection_registry_unsafe','connection_registry_corrupt','identity_mismatch','invite_already_attempted', 'invalid_request', 'session_already_bound', 'human_identity_required', 'identity_name_taken', 'room_name_conflict', 'room_not_found', 'identity_in_use', 'room_contact_missing', 'not_connected', 'room_not_ready', 'message_not_found', 'file_not_found', 'file_unreadable', 'file_too_large', 'daemon_unavailable']);
 const SDK_CODES = new Map([

@@ -90,8 +90,10 @@ test('session tools reject unbound status and redact SDK failures',async()=>{
 // An unmapped error collapses to `internal_error`, whose message tells the caller to "use
 // request_id for diagnostics" -- while that id was written nowhere at all. Three separate people
 // resorted to patching the shipped bundle to see through it. The correlation now goes to the
-// operator's stderr; the client payload must stay opaque, because PUBLIC_CODES is an allowlist
-// that deliberately keeps internal detail away from an MCP client.
+// operator's stderr; the client payload must stay opaque, because PUBLIC_CODES is an allowlist.
+// Note what stderr is NOT: an MCP client can read it (StdioClientTransport takes a `stderr` option
+// and dist-smoke.mjs uses it). The guarantee is that it stays out of the TOOL RESULT, so it never
+// reaches the model's context and cannot be relayed onward by an agent.
 test('an unmapped failure correlates its request_id on stderr without leaking detail to the client', async () => {
   const c = client(); const s = session(c); const srv = new FakeServer();
   const secret = 'C:\\Users\\someone\\private-token-path';
@@ -113,5 +115,5 @@ test('an unmapped failure correlates its request_id on stderr without leaking de
   const logged = JSON.parse(line);
   assert.equal(logged.request_id, payload.request_id, 'stderr must correlate with the id handed to the client');
   assert.equal(logged.code, 'not_a_public_code', 'stderr must carry the real code');
-  assert.ok(logged.message.includes(secret), 'stderr is the operator-side channel and may carry detail');
+  assert.ok(logged.message.includes(secret), 'the diagnostic channel carries the detail the client is denied');
 });
