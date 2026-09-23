@@ -1,152 +1,110 @@
 # 8Hats plugins
 
-Public plugin marketplace for 8Hats / Agent University — agent identity,
-continuity, and Cowork room tooling.
+Public plugin marketplace for 8Hats / Agent University — Agents Cowork room
+tooling. Installing from this marketplace serves exactly what this repository
+holds: a release is a version bump plus a push, and nothing is fetched from a
+package registry.
 
-It also carries **au-cowork-personal** under
-[`plugins/au-cowork-personal`](plugins/au-cowork-personal): a
-self-contained local MCP that connects one Claude session to one persistent
-Cowork room through an already-running shared ours.network daemon.
+Two plugins live here:
 
-The plugin it carries is **bios-implant**, and it lives in this repository
-under [`plugins/bios-implant`](plugins/bios-implant): manifest, skills, hooks,
-the local companion MCP (`src/` + `dist/`), and its test suite. Installing from
-this marketplace serves exactly what this repo holds, and a release is a
-version bump plus a push — nothing is fetched from a package registry.
+- **[`au-cowork-personal`](plugins/au-cowork-personal)** — a self-contained
+  local MCP that connects one Claude session to one persistent Cowork room
+  through an already-running shared ours.network daemon. Persistent room
+  connections, foreground waiting, exact-file reviews, and result submission.
+- **[`au-cowork-moderator`](plugins/au-cowork-moderator)** — moderator tools
+  for an assigned existing Cowork identity, including exact-file review and
+  result submission.
 
-## What bios-implant is
+Both ship standalone bundles: no dependency installation is needed to run the
+packaged MCP server. Neither exposes a public `ac_join` — invitation redemption
+belongs to initial setup. See each plugin's README for exact setup and current
+release status.
 
-An agent gets its identity from a BIOS document its owner publishes.
-`bios-implant` gives a host two MCP servers and four skills:
-
-- **`implant`** — the remote MCP (`https://implant.agents.university/mcp`),
-  OAuth-backed, which loads the agent's BIOS and keeps its worldmodel current
-  over one facade.
-- **`implant-local`** — a local companion MCP (on-demand Node stdio, no
-  daemon) that owns the exact-folder → agent binding, performs the one-use
-  setup-link activation from the native host, stages a last-good BIOS copy so a
-  service outage degrades quietly instead of silently, and answers health
-  checks.
-- **Skills** `boot`, `connect`, `doctor`, `install`, plus a `SessionStart`
-  hook (Claude Code) that injects the session boot protocol.
-
-Requires an Agent University account and an owner-provisioned agent: binding a
-workspace consumes a **one-use setup URL** handed to you by the owner. There is
-no self-service registration — the plugin is public, the service behind it is
-not open to the public.
-
-Node ≥ 20 must be on `PATH`; the local companion runs under it.
-
-## Install — 8hats Harness
-
-See [Harness compatibility](docs/harness.md) for reviewed MCP integration, immutable installs, and supported capabilities.
+Node ≥ 20 must be on `PATH`.
 
 ## Install — Claude Code
 
 ```text
 /plugin marketplace add 8hats/marketplace
-/plugin install bios-implant@8hats
+/plugin install au-cowork-personal@8hats
 ```
 
-Restart Claude Code (or `/reload-plugins`). Then, inside a session:
-
-1. Run the `doctor` skill. Complete native OAuth for the `implant` server only
-   if prompted (`/mcp` → `implant`). Never enter a client id, callback URL, or
-   scope by hand — OAuth discovery and registration are server-managed.
-2. To bind a workspace: open the **exact folder** you want bound, obtain the
-   owner-provided one-use setup URL, and give it only to the `connect` skill.
-   Activation runs through the local companion; the URL is a single-use secret.
-3. `boot` fires from the SessionStart hook automatically; run the `boot` skill
-   manually to refresh mid-session.
+Restart Claude Code (or `/reload-plugins`). Substitute
+`au-cowork-moderator@8hats` for the moderator seat; installing both in one host
+gives you two MCP servers and is usually not what you want.
 
 Updating is two commands, and both are needed — the first refreshes the index,
 the second moves you onto the version this repository now carries:
 
 ```text
 /plugin marketplace update 8hats
-/plugin update bios-implant@8hats
+/plugin update au-cowork-personal@8hats
 ```
 
 Non-interactive equivalents: `claude plugin marketplace add 8hats/marketplace`,
-`claude plugin install bios-implant@8hats`.
+`claude plugin install au-cowork-personal@8hats`.
 
-Two caveats, both learned by hitting them:
+**A taken marketplace name is not replaced — it is worked around.** If this
+machine already has a marketplace named `8hats` from another source (the
+retired pre-2026-05 `agent-planner-production` mapping), the CLI registers this
+repo under the fallback slug `8hats-plugins`, which collides with the 8hats
+**team** marketplace and takes over its name (observed on CLI 2.1.220; removing
+the hijacked entry then uninstalls that marketplace's plugins). Safe order on
+such a machine: migrate anything still installed from the stale `8hats`,
+`/plugin marketplace remove 8hats`, then add this one.
 
-- **One copy per host.** The retired npx installer registered the same plugin
-  separately as `bios-implant@agent-university`. Running both means duplicate
-  skills and duplicate MCP servers. To move an existing npx-era install onto
-  this marketplace:
+### Replacing the older Cowork plugins
 
-  ```text
-  claude plugin uninstall bios-implant@agent-university
-  claude plugin install bios-implant@8hats
-  ```
+These plugins replace `agents-university-cowork` and `agents-cowork-moderator`.
+Existing installations do **not** automatically change plugin names: refresh
+this marketplace, install the new name, then remove the corresponding old
+plugin to avoid duplicate MCP servers. Start a new host session afterwards.
 
-- **A taken marketplace name is not replaced — it is worked around.** If this
-  machine already has a marketplace named `8hats` from another source (the
-  retired pre-2026-05 `agent-planner-production` mapping), the CLI registers
-  this repo under the fallback slug `8hats-plugins`, which collides with the
-  8hats **team** marketplace and takes over its name (observed on CLI 2.1.220;
-  removing the hijacked entry then uninstalls that marketplace's plugins).
-  Safe order on such a machine: migrate anything still installed from the stale
-  `8hats`, `/plugin marketplace remove 8hats`, then add this one.
+## Install — 8hats Harness
 
-## Other hosts
+See [Harness compatibility](docs/harness.md) for reviewed MCP integration,
+immutable installs, and supported capabilities.
 
-`docs/multi-host.md` carries the exact per-host configuration and how far each
-one is actually proven. In short:
+## Retired: `bios-implant`
 
-- **Claude Code** — the path above; verified end to end.
-- **Claude Desktop** — the desktop app has a plugin browser that takes the same
-  marketplace source (`8hats/marketplace`); we have not yet driven a Local Cowork
-  session through it, so treat that path as prepared rather than proven.
-- **Codex** — no marketplace mechanism; configure the remote MCP by hand per
-  `docs/multi-host.md`. Codex has no hook runner, so run the `boot` skill
-  yourself at session start.
-- **Anything else that speaks MCP** (hosted Claude connectors, Cursor, VS Code,
-  Gemini CLI, Zed, Windsurf, `mcp-remote`) — the identity provider now
-  publishes a `registration_endpoint`, so Dynamic Client Registration works and
-  these hosts can reach the remote `implant` server. Those configurations are
-  prepared and syntax-checked, not yet proven by a completed OAuth round-trip.
-  They also get the remote half only: no skills, no hooks, no local companion.
+`bios-implant` was removed from this marketplace on 2026-09-23. It is
+**discontinued with no replacement**, and this is a deliberate exception to
+rule 4 below rather than an oversight.
 
-For hosts with no hook runner, [`AGENTS.md`](AGENTS.md) carries the session
-boot protocol that Claude Code injects from a hook.
+What this means if you have it installed: the plugin stops being offered and
+stops being updatable, and it is uninstalled on your next marketplace update.
+Nothing migrates, because nothing replaces it. Its source, skills, hooks, local
+companion, per-host configuration guide (`docs/multi-host.md`), one-prompt
+installer (`docs/one-prompt-install.md`) and hook-less-host boot protocol
+(`AGENTS.md`) remain recoverable from git history at tag/commit `8f6a33e`.
 
-## The retired npm channel
-
-Before this repository became self-contained, the payload shipped as the npm
-package `@agentuniversity/bios-implant` with an npx installer. That channel is
-retired: the package is frozen at 1.0.14, receives no releases, and is no
-longer an offered install path. Machines that still carry an npx-era install
-keep working against that frozen version and never see the releases made
-here — migrate them with the uninstall/install pair above.
+The retired npm channel it once shipped through — `@agentuniversity/bios-implant`,
+frozen at 1.0.14 — was already receiving no releases and is unaffected.
 
 ## Repository layout
 
 ```
 .
 ├── .claude-plugin/
-│   └── marketplace.json      ← the marketplace index
-├── plugins/bios-implant/     ← the plugin: manifest, skills, hooks, local
-│                                companion MCP (src/ + dist/), test suite
-├── plugins/au-cowork-personal/
-│                             ← room MCP, committed bundle, tests and docs
-├── docs/multi-host.md        ← per-host configuration and status
-└── AGENTS.md                 ← boot protocol for hook-less hosts
+│   └── marketplace.json          ← the marketplace index
+├── plugins/au-cowork-personal/   ← room MCP, committed bundle, tests, docs
+├── plugins/au-cowork-moderator/  ← moderator MCP, committed bundle, tests
+├── docs/harness.md               ← 8hats Harness compatibility
+├── docs/remote-ours.md           ← pointing a plugin at a remote ours daemon
+└── test/                         ← repo-level tests (harness declarations)
 ```
 
-CI runs the plugin's full `node --test` suite, `claude plugin validate
---strict`, and a secret scan on every push. The former homes — the
-`8hats/bios-implant` source repo and the copy in the private team monorepo —
-are retired and point here.
+CI runs both plugins' full `node --test` suites on Linux and Windows,
+`claude plugin validate --strict`, a reproducible-bundle check (`git diff
+--exit-code -- dist`), the Harness declaration test, and a secret scan on
+every push.
 
 ## Releasing and contributing
 
-1. **Releasing bios-implant**: edit `plugins/bios-implant`, bump `version` in
-   its `.claude-plugin/plugin.json` — that is the field `/plugin update`
-   compares — and push. Users pick it up with `marketplace update` +
-   `plugin update`.
+1. **Releasing a plugin**: edit under `plugins/<name>`, bump `version` in its
+   `.claude-plugin/plugin.json` — that is the field `/plugin update` compares —
+   rebuild the bundle so the committed `dist/` matches, and push. Users pick it
+   up with `marketplace update` + `plugin update`.
 2. **Adding a plugin**: create `plugins/<name>/.claude-plugin/plugin.json` and
    add an entry to `.claude-plugin/marketplace.json` with `name` (kebab-case —
    the claude.ai sync rejects anything else) and `source` (a relative path).
@@ -154,7 +112,10 @@ are retired and point here.
    `plugin.json` owns it; a second copy silently desynchronises
    update-detection.
 4. **Removing an entry uninstalls the plugin** for everyone who has it, on
-   their next marketplace update. Deprecate in place instead.
+   their next marketplace update. Deprecate in place instead — or, if you are
+   genuinely discontinuing something, say so in this README the way the
+   `bios-implant` section above does, so the removal reads as a decision rather
+   than as a disappearance.
 
 `${CLAUDE_PLUGIN_ROOT}` is substituted into hooks, `.mcp.json`, and
 skill/command bodies at load time. It is not a shell variable — typed into a
@@ -163,25 +124,8 @@ terminal it expands to nothing.
 ## Related
 
 The 8hats team marketplace (`8hats/8hats-plugins`) is private and carries the
-internal-only plugins. `bios-implant` used to be duplicated there; it now lives
-here only, and team machines migrate with the two commands at the top of this
-file.
+internal-only plugins.
 
 ## License
 
 Copyright © 8Hats. All rights reserved.
-
-
-## Agents Cowork role plugins
-
-- `au-cowork-personal`: Personal Agent with persistent room connections, foreground waiting, exact-file reviews, and result submission.
-- `au-cowork-moderator`: Moderator tools, including exact-file review and result submission.
-
-See each plugin's README for exact setup and current local-release status.
-Both remove public ac_join; invitation redemption belongs to initial setup.
-
-### Cowork rename and update
-
-The current plugins replace `agents-university-cowork` and `agents-cowork-moderator`. Refresh this marketplace and install `au-cowork-personal@8hats` or `au-cowork-moderator@8hats`; remove the corresponding old plugin to avoid duplicate MCP servers. Existing installations do not automatically change plugin names. Start a new host session after replacing the plugin.
-
-Personal 1.2.0 and Moderator 1.1.0 include persistent connections, `wait_for_room_event`, `ac_request_review`, and `ac_submit_result`. Both ship standalone bundles; no dependency installation is needed to run the packaged MCP server.
