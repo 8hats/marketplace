@@ -1,3 +1,15 @@
+## 1.3.4 — an unmapped failure now leaves a trace
+
+- Make `request_id` mean something. An unmapped error collapses to `internal_error`, whose message
+  tells the caller to "use request_id for diagnostics" — while that id was written nowhere at all:
+  no log line, no stderr, no trace. It was a handle on a door with no room behind it, and it is why
+  three separate people independently resorted to patching the shipped bundle to diagnose anything.
+  The correlation — `request_id`, the real error code, the message — now goes to the operator's
+  stderr. The client payload is deliberately unchanged: `PUBLIC_CODES` is an allowlist that keeps
+  internal detail away from an MCP client, so widening it would trade an opacity bug for a
+  disclosure one. Pinned by a test that fails if the stderr line disappears **or** if internal
+  detail reaches the client.
+
 ## 1.3.3 — the plugin now actually serves on Windows
 
 **1.3.2's Windows fix did not hold for installed users.** It fixed the crashes that stopped the
