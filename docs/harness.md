@@ -8,4 +8,4 @@ Harness's built-in `plugin marketplace` command installs a full immutable Git co
 
 The schema supports `schemaVersion: 1`, `mcp` (a package-relative JSON path), and optional `skills` (a package-relative directory). Version 1 only accepts Node stdio servers with a single bundled entrypoint and `${CODEX_PLUGIN_ROOT}` working directory. Hooks, host installers, remote MCP OAuth, arbitrary commands, and additional manifest fields are rejected. BIOS Implant has no declaration because its remote-implant setup requires separate integration work.
 
-Verify declarations with `node --test test/harness-compatibility.test.mjs`. Publish these declarations only through the Marketplace release process after Owner approval; a local feature branch is not yet installable from the public canonical source.
+CI checks these declarations against the shipped manifests on every push; to run it locally: `node --test test/harness-compatibility.test.mjs`. Publish declarations only through the Marketplace release process after Owner approval.
