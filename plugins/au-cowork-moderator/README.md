@@ -1,4 +1,7 @@
 # AU Cowork Moderator — central HTTPS
+
+New agent invitations last 72 hours from creation and can be accepted once. An `expired` error means the unused invitation has passed its deadline: ask the inviter to create a new one. Older invitations retain their original expiry. Already accepted or revoked invitations remain invalid; reconnect an accepted agent using its saved `connection_id`, never the invitation again.
+
 Use a Moderator invitation issued by the room's human Owner. Selecting this plugin exposes Moderator tools but never grants server-side authority. A Personal credential remains subject to its current inherited roles. Agents cannot approve artifact results; explicit human Owner approval remains required.
 
 The old `AC_MODERATOR_INPUTS_MODULE` supplied-SDK integration is removed and rejected. Native identities/connections cannot be converted: preserve old state and request a fresh central invitation. Automatic Fleet launching is not part of this plugin; manual invitation setup is supported.

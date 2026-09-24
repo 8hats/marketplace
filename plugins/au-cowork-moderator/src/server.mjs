@@ -16,6 +16,7 @@ const messages={
  central_configuration_required:'Set AC_COWORK_URL to the central HTTPS origin, or provide an HTTPS invitation URL.',
  legacy_configuration_rejected:'Remove legacy daemon settings and configure AC_COWORK_URL.',
  invalid_invitation:'Use a fresh HTTPS agent invitation for the configured central service.',
+ expired:'This agent invitation has expired. Ask the inviting person for a new invitation; new invitations are valid for 72 hours.',
  credential_storage_failed:'Credential storage failed after exchange. Ask the inviting person to remove the accepted agent, then issue a new invitation.',
  credential_rotation_uncertain:'Credential renewal could not be confirmed. Do not retry rotation; ask the inviting person to remove this agent and issue a new invitation.',
  unauthenticated:'The credential expired or was revoked. Ask the inviting person to remove this agent and issue a new invitation.',

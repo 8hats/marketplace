@@ -8,6 +8,22 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {zodToJsonSchema} from 'zod-to-json-schema';
 import {CentralClient,ConnectionStore,invitation} from '../src/central-client.mjs';
 import {centralTools} from '../src/central-tools.mjs';
+import {createRuntime} from '../src/server.mjs';
+
+test('expired invitation is explained through MCP without exchange retry or saved credentials',async()=>{
+ const root=path.join(await fs.mkdtemp(path.join(tmpdir(),'cowork-expired-')),'private');
+ let exchanges=0;
+ const client=new CentralClient({store:new ConnectionStore(root),fetchFn:async()=>{exchanges++;return new Response(JSON.stringify({error:{code:'expired'}}),{status:401});}});
+ const handlers=new Map();
+ const runtime=await createRuntime({client,injectedServer:{registerTool:(name,descriptor,handler)=>handlers.set(name,handler)}});
+ try{
+  const result=await handlers.get('connect_to_room')({invite:'https://cowork.example/#/agent-invite/'+'a'.repeat(43)});
+  assert.equal(result.isError,true);assert.equal(result.structuredContent.error.code,'expired');
+  assert.match(result.structuredContent.error.message,/expired.*new invitation/);
+  assert.equal(result.structuredContent.error.retryable,false);
+  assert.equal(exchanges,1);assert.deepEqual(await client.store.list(),[]);
+ }finally{await runtime.shutdown();await fs.rm(path.dirname(root),{recursive:true,force:true});}
+});
 
 const secret='a'.repeat(43),origin='https://cowork.example',invite=origin+'/#/agent-invite/'+secret;
 const accepted={credential:'b'.repeat(43),room_id:'room',room_name:'Room',agent_id:'agent',display_name:'Agent',expires_at:'2099-01-01T00:00:00.000Z'};
