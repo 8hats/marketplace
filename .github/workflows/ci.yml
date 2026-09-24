@@ -27,7 +27,7 @@ jobs:
         run: |
           npm ci --prefix plugins/au-cowork-personal
           npm ci --prefix plugins/au-cowork-moderator
-      - name: AU Cowork Personal suite and bundle
+      - name: AU Cowork Personal secure storage suite and bundle
         shell: bash
         working-directory: plugins/au-cowork-personal
         run: |
@@ -39,6 +39,13 @@ jobs:
         run: |
           node --test --test-concurrency=1
           node build.mjs
+
+      - name: Windows Moderator source and isolated bundle MCP probes
+        shell: bash
+        working-directory: plugins/au-cowork-moderator
+        run: |
+          node ../au-cowork-personal/scripts/stdio-probe.mjs src/server.mjs
+          node ../au-cowork-personal/scripts/stdio-probe.mjs dist/cowork-mcp.mjs --isolate
 
       # Does the plugin actually serve MCP on Windows? Answered by probe, not by argument:
       # both the bundle and the source answer a real `initialize` frame here. These two are a
@@ -230,8 +237,13 @@ jobs:
           npm run build
           git diff --exit-code -- dist
 
-      - name: AU Cowork Personal clean bundle smoke
-        run: node plugins/au-cowork-personal/test/dist-smoke.mjs
+      - name: AU Cowork Personal packaged install and clean stdio smoke
+        working-directory: plugins/au-cowork-personal
+        run: node scripts/package-check.mjs
+
+      - name: Moderator packaged install and clean stdio smoke
+        working-directory: plugins/au-cowork-moderator
+        run: node scripts/package-check.mjs
 
       - name: npm-sourced plugins resolve on the registry
         run: |

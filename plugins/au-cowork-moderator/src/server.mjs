@@ -1,69 +1,58 @@
 #!/usr/bin/env node
-import path from 'node:path';
+import {randomUUID} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
-import {Server} from '@modelcontextprotocol/sdk/server/index.js';
+import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
-import {ListToolsRequestSchema,CallToolRequestSchema} from '@modelcontextprotocol/sdk/types.js';
+import {ListToolsRequestSchema} from '@modelcontextprotocol/sdk/types.js';
+import {z,ZodError} from 'zod';
 import {zodToJsonSchema} from 'zod-to-json-schema';
-import {z} from 'zod';
-import {createProductTools} from '../../au-cowork-personal/src/product-tools.mjs';
-import {MonitorManager} from '../../au-cowork-personal/src/monitor-manager.mjs';
+import {CentralClient,failure} from './central-client.mjs';
+import {centralTools} from './central-tools.mjs';
 
-import {ForegroundWait,waitSchema,waitDescriptor,waitResult,monitorInstructions} from '../../au-cowork-personal/src/foreground-wait.mjs';
-import {remoteDiagnostic,remoteSetupInstructions} from '../../au-cowork-personal/src/remote-config.mjs';
-import {sessionRegistry} from '../../au-cowork-personal/src/session-registries.mjs';
-import {CoworkSession} from '../../au-cowork-personal/src/session.mjs';
-import {ConnectionRegistry,connectionView} from '../../au-cowork-personal/src/connections.mjs';
-import {connectInvite,reconnectInvite} from '../../au-cowork-personal/src/invite-session.mjs';
-
-export const VERSION='1.2.3';
-const cid=z.string().regex(/^[a-fA-F0-9]{64}$/);
-const configuration=z.object({identityName:z.string().min(1),identityCid:cid,roomCid:cid,roomName:z.string().min(1),monitor:z.boolean().optional()});
-export async function createRuntime({inputs,session: suppliedSession,connections:injectedConnections}={}){
- const server=new Server({name:'au-cowork-moderator',version:VERSION},{capabilities:{tools:{},logging:{}},instructions:remoteSetupInstructions+"\n"+monitorInstructions});
- let session=inputs?null:(suppliedSession??new CoworkSession());
- if(!inputs)session.connections=injectedConnections??session.connections??sessionRegistry(session,ConnectionRegistry,['init','list','get','reserve','update','attempted']);
- const monitor=new MonitorManager({server,registry:{}});
- if(inputs){
-  const config=configuration.parse(inputs),sdk=inputs.client;
-  if(!sdk||typeof sdk.currentIdentity!=='function')throw Error('An already-bound SDK client is required.');
-  const assigned=async()=>{const identity=await sdk.currentIdentity();if(identity?.name!==config.identityName||identity?.cid?.toUpperCase()!==config.identityCid.toUpperCase())throw Error('Assigned Moderator identity is unavailable.');return identity;};
-  await assigned();
-  const client=new Proxy({}, {get:(_target,method)=>method==='then'?undefined:method==='currentIdentity'?assigned:method==='watchNotifications'?async function*(...args){await assigned();for await(const event of sdk.watchNotifications(...args)){await assigned();yield event;}}:async(...args)=>{await assigned();return sdk[method](...args);}});
-  const row={room_name:config.roomName,identity_name:config.identityName,identity_cid:config.identityCid,contact_cid:config.roomCid.toUpperCase(),membership_state:'ready'};
-  session={bound:row,ensureAttached:async()=>client};
-  if(config.monitor!==false){monitor.start(client,row);}
- }
- const product=createProductTools(session,{profile:'moderator',onRetainedMessage:(row,item)=>monitor?.wakeRetained(row,item)});let busy=false;
- const waiter=new ForegroundWait({session,monitor,retained:()=>product.retainedMessages()});
- const lifecycle=inputs?[]:[{name:'connect_to_room',description:'Create a persistent Moderator with an invite once, or reconnect its explicit connection_id; never redeem again for reconnect.',inputSchema:z.object({invite:z.string().min(1).optional(),connection_id:z.string().uuid().optional()}).strict().refine(v=>Boolean(v.invite)!==Boolean(v.connection_id))},{name:'disconnect_from_room',description:'Release this session lease while retaining identity and room membership.',inputSchema:z.object({}).strict()},{name:'list_rooms',description:'List saved Moderator connections for explicit reconnect selection.',inputSchema:z.object({}).strict()}];
- server.setRequestHandler(ListToolsRequestSchema,async()=>({tools:[waitDescriptor,...lifecycle,...product.descriptors.values()].map(tool=>({name:tool.name,description:tool.description,inputSchema:{...zodToJsonSchema(tool.inputSchema,{$refStrategy:'none'}),type:'object'}}))}));
- server.setRequestHandler(CallToolRequestSchema,async(request,extra)=>{
-  if(request.params.name===waitDescriptor.name){try{return waitResult(await waiter.wait(waitSchema.parse(request.params.arguments??{}),extra?.signal));}catch{return {isError:true,...waitResult({status:'invalid_request'})};}}
-  if(busy)return {isError:true,content:[{type:'text',text:JSON.stringify({code:'invalid_state',effect:'none',message:'Another Moderator tool is active.'})}]};
-  busy=true;try{
-   const tool=lifecycle.find(t=>t.name===request.params.name);
-   if(tool){
-    try{
-     const args=tool.inputSchema.parse(request.params.arguments??{});let data;
-     if(tool.name==='connect_to_room'){data=args.invite?await connectInvite(session,args.invite,'moderator'):await reconnectInvite(session,args.connection_id,'moderator');monitor.start(await session.ensureAttached(),session.bound);}
-     else if(tool.name==='list_rooms'){data={rooms:(await session.connections.list('moderator')).map(connectionView)};}
-     else {monitor?.stop();await session.release();data={status:'disconnected'};}
-     return {content:[{type:'text',text:JSON.stringify({ok:true,data})}]};
-    }catch(error){return {isError:true,content:[{type:'text',text:JSON.stringify({ok:false,error:{...(remoteDiagnostic(error)??{code:error instanceof z.ZodError?'invalid_request':(['session_already_bound','invite_already_attempted','identity_in_use','identity_mismatch','room_contact_missing','connection_not_found','connection_outcome_unresolved','connection_registry_unsafe','connection_registry_unavailable'].includes(error.code)?error.code:'connection_failed'),...(error.connection_id?{connection_id:error.connection_id,identity_name:error.identity_name,identity_retained:error.identity_retained}:{}),message:'Connection did not complete. Inspect admission before attempting another session.'}),...(error.connection_id?{connection_id:error.connection_id,identity_name:error.identity_name,identity_retained:error.identity_retained}:{})}})}]};}
-   }
-   return await product.execute(request.params.name,request.params.arguments??{});
-  }finally{busy=false;}
- });
- return {server,session,shutdown:async()=>{monitor?.stop();if(!inputs)await session.release();await server.close();}};
+export const VERSION='2.0.0';
+const encode=data=>({content:[{type:'text',text:JSON.stringify(data)}],structuredContent:data});
+const instructions='Connect with an HTTPS agent invitation URL or a saved connection_id. Credentials stay in private local storage. Read ac_messages and ac_files after connecting. wait_for_room_event waits without consuming mail and supports cancellation. Room commands use current inherited permissions. Review and result approval still require the human owner.';
+const messages={
+ central_configuration_required:'Set AC_COWORK_URL to the central HTTPS origin, or provide an HTTPS invitation URL.',
+ legacy_configuration_rejected:'Remove legacy daemon settings and configure AC_COWORK_URL.',
+ invalid_invitation:'Use a fresh HTTPS agent invitation for the configured central service.',
+ credential_storage_failed:'Credential storage failed after exchange. Ask the inviting person to remove the accepted agent, then issue a new invitation.',
+ credential_rotation_uncertain:'Credential renewal could not be confirmed. Do not retry rotation; ask the inviting person to remove this agent and issue a new invitation.',
+ unauthenticated:'The credential expired or was revoked. Ask the inviting person to remove this agent and issue a new invitation.',
+ central_unavailable:'The central service is unavailable. Retry reads; inspect a mutation outcome before repeating it.',
+ connection_in_use:'This connection is already open in another process. Disconnect that process first.',
+ result_visibility_changed:'Current room visibility differs from the saved result. Inspect current resources; do not repeat the mutation.',
+};
+export async function createRuntime({client,injectedServer,profile='moderator'}={}){
+ const server=injectedServer??new McpServer({name:'au-cowork-'+profile,version:VERSION},{capabilities:{logging:{}},instructions});
+ client??=new CentralClient({onEvent:event=>{void server.sendLoggingMessage?.({level:'info',logger:'cowork',data:event}).catch(()=>{});}});
+ const descriptors=[];let busy=false;
+ const register=(name,description,schema,run,concurrent=false)=>{
+  descriptors.push({name,description,inputSchema:schema});
+  server.registerTool(name,{description,inputSchema:z.object({}).passthrough()},async(input,extra)=>{
+   const requestId=randomUUID();
+   if(busy&&!concurrent)return {...encode({code:'invalid_state',message:'Another room tool is active.',effect:'none'}),isError:true};
+   if(!concurrent)busy=true;
+   try{return encode(await run(schema.parse(input??{}),extra?.signal));}
+   catch(error){const code=error instanceof ZodError?'invalid_request':/^[a-z_]{1,64}$/.test(error?.code??'')?error.code:'internal_error';return {...encode({ok:false,error:{code,message:messages[code]??code,retryable:['central_unavailable','database_busy','rate_limited'].includes(code)},...(error.operation_id?{operation_id:error.operation_id}:{}),request_id:requestId}),isError:true};}
+   finally{if(!concurrent)busy=false;}
+  });
+ };
+ const ok=data=>({ok:true,data,request_id:randomUUID()});
+ register('enter_room','Enter a central Cowork room with an invitation and agent display name.',z.object({invite:z.string().min(1),as_agent:z.string().min(1).max(128)}).strict(),async input=>ok(await client.connect(input)));
+ const connectSchema=profile==='moderator'?z.object({invite:z.string().min(1).optional(),connection_id:z.string().uuid().optional()}).strict().refine(input=>Boolean(input.invite)!==Boolean(input.connection_id)):z.object({invite:z.string().min(1).optional(),room_name:z.string().min(1).max(256).optional(),connection_id:z.string().uuid().optional()}).strict();
+ register('connect_to_room','Exchange an HTTPS invite once, or reconnect a saved connection_id; Personal also supports a unique room name.',connectSchema,async input=>ok(await client.connect(input)));
+ register('disconnect_from_room','Disconnect while retaining the credential and durable inbox.',z.object({}).strict(),async()=>{const room=client.publicRow();await client.disconnect();return ok({...(room?{room_name:room.room_name}:{}),status:'disconnected'});});
+ register('list_rooms','List locally saved central room connections.',z.object({}).strict(),async()=>ok({rooms:(await client.store.list()).map(row=>client.publicRow(row))}));
+ register('get_room_status','Check central connectivity, authorization and monitor health.',z.object({}).strict(),async()=>{if(!client.row)throw failure('not_connected');const status=await client.request('/session');return ok({...client.publicRow(),can_send:true,can_read:true,monitoring:client.monitorState,room:status.room,capabilities:status.capabilities});});
+ register('wait_for_room_event','Wait without consuming mail; sending remains available while waiting.',z.object({timeout_ms:z.number().int().min(1000).max(50000).default(50000)}).strict(),(input,signal)=>client.wait(input.timeout_ms,signal),true);
+ for(const tool of centralTools(client,profile))register(tool.name,tool.description,tool.inputSchema,tool.execute);
+ server.server?.setRequestHandler(ListToolsRequestSchema,async()=>({tools:descriptors.map(tool=>({name:tool.name,description:tool.description,inputSchema:{...zodToJsonSchema(tool.inputSchema,{$refStrategy:'none'}),type:'object'}}))}));
+ return {server,client,shutdown:()=>client.disconnect()};
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
- let runtime;
- try{
-  const modulePath=process.env.AC_MODERATOR_INPUTS_MODULE;let inputs;
-  if(modulePath){if(!path.isAbsolute(modulePath))throw Error('Absolute inputs path required');const module=await import(pathToFileURL(modulePath).href);inputs=await module.createModeratorInputs();}
-  runtime=await createRuntime({inputs});await runtime.server.connect(new StdioServerTransport());
-  let closing=false;const close=async()=>{if(closing)return;closing=true;await runtime.shutdown();};
-  process.stdin.once('end',close);process.stdin.once('close',close);process.once('SIGINT',close);process.once('SIGTERM',close);
- }catch(error){process.stderr.write((remoteDiagnostic(error)?.message??'Moderator inputs or assigned identity unavailable; verify operator configuration.')+'\n');process.exitCode=1;await runtime?.shutdown();}
+ const runtime=await createRuntime();
+ await runtime.server.connect(new StdioServerTransport());
+ let closing=false;const close=async()=>{if(closing)return;closing=true;await runtime.shutdown();process.exitCode=0;};
+ process.stdin.once('end',close);process.stdin.once('close',close);process.once('SIGINT',close);process.once('SIGTERM',close);
 }

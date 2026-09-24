@@ -8,7 +8,6 @@ const result = await build({
   entryPoints: [fileURLToPath(new URL('./src/server.mjs', import.meta.url))],
   outfile: fileURLToPath(new URL('./dist/cowork-mcp.mjs', import.meta.url)),
   bundle: true,
-  nodePaths: [fileURLToPath(new URL('./node_modules/', import.meta.url))],
   platform: 'node',
   target: 'node22',
   format: 'esm',

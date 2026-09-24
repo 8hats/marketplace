@@ -1,3 +1,12 @@
+## 2.0.0 — central HTTPS Moderator
+
+- Replace daemon transport and supplied SDK inputs with Owner-issued HTTPS invitations and private scoped credentials.
+- Preserve Moderator product tools; current server-side ownership, roles and permissions authorize every action.
+- Durable monitoring, retry keys, file integrity and verified native Windows ACL storage match the central Personal client.
+- Old native connections are retained separately, not imported. Fresh central invitations are required.
+
+The entries below describe historical daemon releases, not current setup.
+
 ## 1.2.3 — inherits the clearer config-path error from the shared module
 
 - No change to this plugin's own source. It shares `remote-config.mjs` with au-cowork-personal,

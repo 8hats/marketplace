@@ -1,197 +1,58 @@
 #!/usr/bin/env node
-import { randomUUID } from 'node:crypto';
-import { pathToFileURL } from 'node:url';
-import {connectionBootstrap} from './bootstrap.mjs';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { z } from 'zod';
-import {ForegroundWait,waitSchema,waitDescriptor,waitResult,monitorInstructions} from './foreground-wait.mjs';
-import {createProductTools} from './product-tools.mjs';
+import {randomUUID} from 'node:crypto';
+import {pathToFileURL} from 'node:url';
+import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
+import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
 import {ListToolsRequestSchema} from '@modelcontextprotocol/sdk/types.js';
+import {z,ZodError} from 'zod';
 import {zodToJsonSchema} from 'zod-to-json-schema';
-import {ConnectionRegistry,connectionView} from './connections.mjs';
-import { connectInvite, reconnectInvite, markReady } from './invite-session.mjs';
-import { remoteDiagnostic, remoteSetupInstructions } from './remote-config.mjs';
-import { sessionRegistry } from './session-registries.mjs';
-import { CoworkSession } from './session.mjs';
-import { RoomRegistry } from './registry.mjs';
-import { MonitorManager } from './monitor-manager.mjs';
+import {CentralClient,failure} from './central-client.mjs';
+import {centralTools} from './central-tools.mjs';
 
-export const VERSION = '1.3.6';
-const text = (data) => ({ content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data });
-const ok = (data) => text({ ok: true, data, request_id: randomUUID() });
-const fail = (code, message, retryable = false, action, requestId = randomUUID()) => text({ ok: false, error: { code, message, retryable, ...(action ? { action } : {}) }, request_id: requestId });
-// identity_in_use is RECOVERABLE: a session that died without disconnecting leaves the daemon
-// holding the lease, and the condition has an exit. Reporting it as non-retryable told callers to
-// stop for good, which sent one agent hunting for an escape and into a force-rebind that
-// permanently destroyed the identity (it loses its room contact, and nothing can put one back).
-// RECOVERABLE, NOT TRANSIENT, and the distinction is load-bearing: a restart of the holding
-// daemon demonstrably releases the lease, but no one has ever observed one expire on a timer --
-// one was held over an hour with no process alive. So the exit may require the daemon operator or
-// a fresh invite. Do not restore any claim that the lease clears by itself; it is unmeasured, and
-// so is the opposite. See the F8 guard in test/handlers.test.mjs.
-const RETRYABLE_CODES = new Set(['daemon_unavailable', 'identity_in_use']);
-const RETRY_ACTIONS = {
-  identity_in_use: 'Another session still holds this identity. Retry the same connection_id a couple of times in case the holder is still shutting down. If it persists, do not keep waiting — the lease may not clear on its own: ask the daemon operator to release it, or get a new invite. Do NOT force-rebind: it evicts the old session, the identity loses its room contact, and no tool can restore one.',
+export const VERSION='2.0.0';
+const encode=data=>({content:[{type:'text',text:JSON.stringify(data)}],structuredContent:data});
+const instructions='Connect with an HTTPS agent invitation URL or a saved connection_id. Credentials stay in private local storage. Read ac_messages and ac_files after connecting. wait_for_room_event waits without consuming mail and supports cancellation. Room commands use current inherited permissions. Review and result approval still require the human owner.';
+const messages={
+ central_configuration_required:'Set AC_COWORK_URL to the central HTTPS origin, or provide an HTTPS invitation URL.',
+ legacy_configuration_rejected:'Remove legacy daemon settings and configure AC_COWORK_URL.',
+ invalid_invitation:'Use a fresh HTTPS agent invitation for the configured central service.',
+ credential_storage_failed:'Credential storage failed after exchange. Ask the inviting person to remove the accepted agent, then issue a new invitation.',
+ credential_rotation_uncertain:'Credential renewal could not be confirmed. Do not retry rotation; ask the inviting person to remove this agent and issue a new invitation.',
+ unauthenticated:'The credential expired or was revoked. Ask the inviting person to remove this agent and issue a new invitation.',
+ central_unavailable:'The central service is unavailable. Retry reads; inspect a mutation outcome before repeating it.',
+ connection_in_use:'This connection is already open in another process. Disconnect that process first.',
+ result_visibility_changed:'Current room visibility differs from the saved result. Inspect current resources; do not repeat the mutation.',
 };
-// An error that collapses to internal_error is by definition one nobody anticipated, and the client
-// is told to "use request_id for diagnostics" while that id correlates with nothing anywhere. Emit
-// the correlation so the id means something.
-//
-// What this boundary does and does NOT guarantee, because it is easy to get wrong and expensive to
-// get wrong later: an MCP client CAN read this stream -- StdioClientTransport takes a `stderr`
-// option and test/dist-smoke.mjs in this very repo pipes and reads it. stderr is therefore NOT
-// private. What it is, is OUT OF THE TOOL RESULT: it never enters the model's context, so an agent
-// cannot relay it onward into a room message, a PR body or a report. In a product whose agents
-// routinely paste tool output into shared rooms, that is the boundary that matters -- but do not
-// put a token or a full config dump here believing it unreachable. It isn't.
-// The client payload stays as it was: PUBLIC_CODES is an allowlist, and widening it would trade an
-// opacity bug for a disclosure one.
-// Not gated behind a debug flag -- internal_error is rare by construction, and a diagnostic you
-// must already know to enable does not help the person meeting it for the first time.
-// Scope is the tool-call handler: failures in createRuntime or the monitor path have no request_id,
-// and the monitor has its own stderr channel (monitor-manager.mjs).
-const diagnose = (requestId, error) => process.stderr.write(`${JSON.stringify({ event: 'internal_error', request_id: requestId, code: error?.code ?? error?.name ?? 'unknown', message: String(error?.message ?? error ?? '').slice(0, 500) })}\n`);
-const identityTaken = (error) => /exists|taken|duplicate/i.test(error?.message ?? '');
-const PUBLIC_CODES = new Set(['connection_not_found','connection_outcome_unresolved','connection_selection_required','connection_registry_unavailable','connection_registry_unsafe','connection_registry_corrupt','identity_mismatch','invite_already_attempted', 'invalid_request', 'session_already_bound', 'human_identity_required', 'identity_name_taken', 'room_name_conflict', 'room_not_found', 'identity_in_use', 'room_contact_missing', 'not_connected', 'room_not_ready', 'message_not_found', 'file_not_found', 'file_unreadable', 'file_too_large', 'daemon_unavailable']);
-const SDK_CODES = new Map([
-  ['NAME_TAKEN', 'identity_name_taken'], ['BOUND_ELSEWHERE', 'identity_in_use'], ['TEMP_OWNED_ELSEWHERE', 'identity_in_use'],
-  ['FILE_UNREADABLE', 'file_unreadable'], ['PATH_NOT_ABSOLUTE', 'file_unreadable'], ['FILE_TOO_LARGE', 'file_too_large'],
-  ['NOT_BOUND', 'not_connected'], ['NOT_BOUND_NO_NAME', 'not_connected'], ['NO_SUCH_IDENTITY', 'room_not_found'],
-  ['UNKNOWN_OR_STALE_ID', 'file_not_found'], ['MALFORMED_ID', 'file_not_found']
-]);
-const daemonFailure = (error) => error?.name === 'DaemonUnavailableError' || ['ECONNREFUSED', 'ECONNRESET', 'ENOENT'].includes(error?.code) || /fetch failed|daemon.*unavailable|connect ECONN/i.test(error?.message ?? '');
-const uploadTooLarge = (error) => /uploadFile\([^)]*\): upload is \d+ bytes, at or over the transport's \d+-byte envelope budget/i.test(error?.message ?? '');
-
-export async function createRuntime({ session = new CoworkSession(), server: injectedServer, registry: injectedRegistry, connections: injectedConnections, productOptions } = {}) {
-  const connections=injectedConnections??session.connections??sessionRegistry(session,ConnectionRegistry,['init','list','get','reserve','update','attempted']);session.connections=connections;
-  const registry=injectedRegistry??sessionRegistry(session,RoomRegistry,['init','list','get','create','updateState']);
-  if(injectedRegistry){await registry.init();await registry.list();}
-  const server = injectedServer ?? new McpServer({ name: 'au-cowork-personal', version: VERSION }, { capabilities: { logging: {} }, instructions: remoteSetupInstructions+"\n"+monitorInstructions });
-  const monitor = new MonitorManager({ server, registry });
-
-  const product = createProductTools(session,{...productOptions,profile:'personal',onRetainedMessage:(row,item)=>monitor.wakeRetained(row,item)});
-  const definitions=[waitDescriptor];let busy=false;
-  const waiter=new ForegroundWait({session,monitor,retained:()=>product.retainedMessages()});
-  server.registerTool(waitDescriptor.name,{description:waitDescriptor.description,inputSchema:waitSchema.shape},async(args,extra)=>waitResult(await waiter.wait(waitSchema.parse(args),extra?.signal)));
-  const exclusive=fn=>async args=>{if(busy)return {isError:true,content:[{type:'text',text:JSON.stringify({code:'invalid_state',effect:'none',message:'Another room tool is active.'})}]};busy=true;try{return await fn(args);}finally{busy=false;}};
-  const bound = () => session.bound;
-  const identitySessions = (identities) => new Map(identities.filter((item) => 'session' in item).map((item) => [item.name, item.session]));
-  const publicRoom = (row, sessions) => {
-    const sessionState = sessions.get(row.identity_name) ?? null;
-    const bindState = sessionState === 'mine' ? 'bound_here' : sessionState === 'other-live' ? 'bound_elsewhere' : 'unbound';
-    const status = row.membership_state === 'connecting' ? 'connecting' : bindState === 'bound_here' ? 'connected' : 'disconnected';
-    return { room_name: row.room_name, as_agent: row.identity_name, status, membership_state: row.membership_state, bind_state: bindState };
-  };
-  const requireBound = () => { const row = bound(); if (!row) throw Object.assign(new Error('not_connected'), { code: 'not_connected' }); return row; };
-  const liveReady = async (client, row) => {
-    const contacts = await client.listContacts();
-    const ready = contacts.contacts?.some((c) => c.container_id === row.contact_cid);
-    return ready && row.membership_state !== 'ready' ? markReady(registry, row) : row;
-  };
-  const handler = (fn) => async (args) => {
-    try { return await fn(args ?? {}); }
-    catch (error) {
-      const remote=remoteDiagnostic(error);if(remote){const result=fail(remote.code,remote.message,['remote_unavailable','daemon_setup_required'].includes(remote.code));if(error.connection_id){Object.assign(result.structuredContent.error,{connection_id:error.connection_id,identity_name:error.identity_name,identity_retained:error.identity_retained});return text(result.structuredContent);}return result;}
-      const candidate = SDK_CODES.get(error?.code) ?? (PUBLIC_CODES.has(error?.code) ? error.code : uploadTooLarge(error) ? 'file_too_large' : daemonFailure(error) ? 'daemon_unavailable' : 'internal_error');
-      const code = PUBLIC_CODES.has(candidate) ? candidate : 'internal_error';
-      const message = code === 'daemon_unavailable' ? 'The shared ours daemon is unavailable; ask the operator to start it, then retry.'
-        : code === 'file_unreadable' ? 'The file cannot be read by this process. Check the path and permissions, then retry.'
-          : code === 'file_too_large' ? 'The file exceeds the ours transport limit.'
-            : code === 'invite_already_attempted' ? 'This invite was already used for a redemption attempt. Reconnect with its connection_id instead; a reserve that never reached the daemon releases the invite automatically after 30 seconds.'
-              : code === 'internal_error' ? 'Cowork could not complete the operation; use request_id for diagnostics.' : code;
-      const requestId=randomUUID();if(code==='internal_error')diagnose(requestId,error);
-      const result=fail(code,message,RETRYABLE_CODES.has(code),RETRY_ACTIONS[code],requestId);if(error.connection_id){const value=JSON.parse(result.content[0].text);value.error.connection_id=error.connection_id;value.error.identity_name=error.identity_name;value.error.identity_retained=error.identity_retained;return text(value);}return result;
-    }
-  };
-  const register = (name, description, inputSchema, fn, readOnly = false) => { definitions.push({name,description,inputSchema:z.object(inputSchema)});return server.registerTool(name, {
-    description, inputSchema,
-    annotations: { readOnlyHint: readOnly, destructiveHint: false, idempotentHint: readOnly, openWorldHint: false }
-  }, exclusive(handler(fn))); };
-
-  register('enter_room', 'Enter a Cowork room from an invite as a persistent exact agent identity.', {
-    invite: z.string().min(1), as_agent: z.string().min(1).max(128)
-  }, async ({ invite, as_agent }) => {
-    if (bound()) throw Object.assign(new Error('session_already_bound'), { code: 'session_already_bound' });
-    const client = await session.ensureAttached();
-    const identities = await client.listIdentities();
-    if (!identities.some((row) => row.kind === 'root')) throw Object.assign(new Error('human_identity_required'), { code: 'human_identity_required' });
-    try { await client.createIdentity({ name: as_agent, bio: `Cowork room identity: ${as_agent}`, exposeLocal: false, localAutoAccept: false }); }
-    catch (error) { if (error?.code === 'NAME_TAKEN' || identityTaken(error)) throw Object.assign(new Error('identity_name_taken'), { code: 'identity_name_taken' }); throw error; }
-    let contact;
-    try {
-      contact = await client.addContact({ invite });
-      const contacts = await client.listContacts();
-      const ready = contacts.contacts?.some((c) => c.container_id === contact.cid);
-      const row = await registry.create({ roomName: contact.display, identityName: as_agent, contactCid: contact.cid, membershipState: ready ? 'ready' : 'connecting' });
-      session.bound = row; monitor.start(client, row);
-      return ok({ room_name: row.room_name, as_agent, status: ready ? 'connected' : 'connecting', monitoring_instructions:remoteSetupInstructions+"\n"+monitorInstructions, bootstrap:connectionBootstrap() });
-    } catch (error) {
-      if (contact) await client.removeContact({ contact: contact.cid }).catch(() => undefined);
-      await client.removeIdentity({ name: as_agent }).catch(() => undefined);
-      throw error;
-    }
+export async function createRuntime({client,injectedServer,profile='personal'}={}){
+ const server=injectedServer??new McpServer({name:'au-cowork-'+profile,version:VERSION},{capabilities:{logging:{}},instructions});
+ client??=new CentralClient({onEvent:event=>{void server.sendLoggingMessage?.({level:'info',logger:'cowork',data:event}).catch(()=>{});}});
+ const descriptors=[];let busy=false;
+ const register=(name,description,schema,run,concurrent=false)=>{
+  descriptors.push({name,description,inputSchema:schema});
+  server.registerTool(name,{description,inputSchema:z.object({}).passthrough()},async(input,extra)=>{
+   const requestId=randomUUID();
+   if(busy&&!concurrent)return {...encode({code:'invalid_state',message:'Another room tool is active.',effect:'none'}),isError:true};
+   if(!concurrent)busy=true;
+   try{return encode(await run(schema.parse(input??{}),extra?.signal));}
+   catch(error){const code=error instanceof ZodError?'invalid_request':/^[a-z_]{1,64}$/.test(error?.code??'')?error.code:'internal_error';return {...encode({ok:false,error:{code,message:messages[code]??code,retryable:['central_unavailable','database_busy','rate_limited'].includes(code)},...(error.operation_id?{operation_id:error.operation_id}:{}),request_id:requestId}),isError:true};}
+   finally{if(!concurrent)busy=false;}
   });
-
-  register('connect_to_room', 'Create a unique persistent identity with an invite once, or reconnect the exact saved connection_id. room_name reconnect requires a unique match. Supply exactly one.', { invite: z.string().min(1).optional(), room_name: z.string().min(1).max(256).optional(), connection_id:z.string().uuid().optional() }, async ({ invite, room_name, connection_id }) => {
-    if ([invite,room_name,connection_id].filter(Boolean).length!==1) throw Object.assign(new Error('invalid_request'), { code: 'invalid_request' });
-    if(connection_id){const result=await reconnectInvite(session,connection_id,'personal');monitor.start(await session.ensureAttached(),session.bound);return ok(result);}
-    if (invite) { const result = await connectInvite(session, invite, 'personal'); monitor.start(await session.ensureAttached(), session.bound); return ok(result); }
-    if (bound()) throw Object.assign(new Error('session_already_bound'), { code: 'session_already_bound' });
-    const matches=(await connections?.list('personal')??[]).filter(row=>row.room_name===room_name);
-    const legacyRow=await registry.get(room_name);
-    if(matches.length+(legacyRow?1:0)>1)throw Object.assign(new Error('connection_selection_required'),{code:'connection_selection_required'});
-    if(matches.length===1){const result=await reconnectInvite(session,matches[0].connection_id,'personal');monitor.start(await session.ensureAttached(),session.bound);return ok(result);}
-    let row = legacyRow; if (!row) throw Object.assign(new Error('room_not_found'), { code: 'room_not_found' });
-    const client = await session.ensureAttached();
-    try { await client.chooseIdentity({ name: row.identity_name, force: false }); }
-    catch (error) { if (error?.code === 'BOUND_ELSEWHERE' || /bound|lease|use/i.test(error?.message ?? '')) throw Object.assign(new Error('identity_in_use'), { code: 'identity_in_use' }); throw error; }
-    try {
-      const contacts = await client.listContacts();
-      const known = [...(contacts.contacts ?? []), ...(contacts.pending ?? [])].some((c) => (c.container_id ?? c.cid) === row.contact_cid);
-      if (!known) throw Object.assign(new Error('room_contact_missing'), { code: 'room_contact_missing' });
-      row = await liveReady(client, row); session.bound = row; monitor.start(client, row);
-      return ok({ room_name: row.room_name, as_agent: row.identity_name, status: row.membership_state === 'ready' ? 'connected' : 'connecting', monitoring_instructions:remoteSetupInstructions+"\n"+monitorInstructions, bootstrap:connectionBootstrap() });
-    } catch (error) { await session.release(); throw error; }
-  });
-
-  register('disconnect_from_room', 'Disconnect this session without deleting persistent room state.', {}, async () => {
-    const row = bound(); monitor.stop(); await session.release();
-    return ok({ ...(row ? { room_name: row.room_name } : {}), status: 'disconnected', ...(row ? {} : { already_disconnected: true }) });
-  });
-
-  register('list_rooms', 'List only rooms created by this plugin.', {}, async () => {
-    const rows = await registry.list(); const identities = await (await session.ensureAttached()).listIdentities(); const sessions = identitySessions(identities);
-    return ok({ rooms: [...rows.map((row) => publicRoom(row, sessions)),...(await connections?.list('personal')??[]).map(row=>({...connectionView(row),bind_state:sessions.get(row.identity_name)==='other-live'?'bound_elsewhere':sessions.get(row.identity_name)==='mine'?'bound_here':'unbound'}))] });
-  }, true);
-
-  register('get_room_status', 'Return the current session room state.', {}, async () => {
-    let row = requireBound(); const client = await session.ensureAttached(); row = await liveReady(client, row); session.bound = row;
-    const sessions = identitySessions(await client.listIdentities());
-    return ok({ ...publicRoom(row, sessions), can_send: row.membership_state === 'ready', can_read: true, monitoring: 'armed', bootstrap:connectionBootstrap() });
-  });
-
-  for(const tool of product.descriptors.values()){
-    definitions.push(tool);
-    server.registerTool(tool.name,{description:tool.description,inputSchema:z.object({}).passthrough(),annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true}},exclusive(args=>product.execute(tool.name,args)));
-  }
-  // Advertise full strict union/refinement schemas, while executors validate the
-  // original Zod schema rather than a permissive MCP raw-shape conversion.
-  if(server.server)server.server.setRequestHandler(ListToolsRequestSchema,async()=>({tools:definitions.map(tool=>({name:tool.name,description:tool.description,inputSchema:{...zodToJsonSchema(tool.inputSchema,{$refStrategy:'none'}),type:'object'}}))}));
-
-  return { server, session, registry, monitor, shutdown: async () => { monitor.stop(); await session.release(); } };
+ };
+ const ok=data=>({ok:true,data,request_id:randomUUID()});
+ register('enter_room','Enter a central Cowork room with an invitation and agent display name.',z.object({invite:z.string().min(1),as_agent:z.string().min(1).max(128)}).strict(),async input=>ok(await client.connect(input)));
+ const connectSchema=profile==='moderator'?z.object({invite:z.string().min(1).optional(),connection_id:z.string().uuid().optional()}).strict().refine(input=>Boolean(input.invite)!==Boolean(input.connection_id)):z.object({invite:z.string().min(1).optional(),room_name:z.string().min(1).max(256).optional(),connection_id:z.string().uuid().optional()}).strict();
+ register('connect_to_room','Exchange an HTTPS invite once, or reconnect a saved connection_id; Personal also supports a unique room name.',connectSchema,async input=>ok(await client.connect(input)));
+ register('disconnect_from_room','Disconnect while retaining the credential and durable inbox.',z.object({}).strict(),async()=>{const room=client.publicRow();await client.disconnect();return ok({...(room?{room_name:room.room_name}:{}),status:'disconnected'});});
+ register('list_rooms','List locally saved central room connections.',z.object({}).strict(),async()=>ok({rooms:(await client.store.list()).map(row=>client.publicRow(row))}));
+ register('get_room_status','Check central connectivity, authorization and monitor health.',z.object({}).strict(),async()=>{if(!client.row)throw failure('not_connected');const status=await client.request('/session');return ok({...client.publicRow(),can_send:true,can_read:true,monitoring:client.monitorState,room:status.room,capabilities:status.capabilities});});
+ register('wait_for_room_event','Wait without consuming mail; sending remains available while waiting.',z.object({timeout_ms:z.number().int().min(1000).max(50000).default(50000)}).strict(),(input,signal)=>client.wait(input.timeout_ms,signal),true);
+ for(const tool of centralTools(client,profile))register(tool.name,tool.description,tool.inputSchema,tool.execute);
+ server.server?.setRequestHandler(ListToolsRequestSchema,async()=>({tools:descriptors.map(tool=>({name:tool.name,description:tool.description,inputSchema:{...zodToJsonSchema(tool.inputSchema,{$refStrategy:'none'}),type:'object'}}))}));
+ return {server,client,shutdown:()=>client.disconnect()};
 }
-
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const runtime = await createRuntime().catch(async (error) => {
-    const diagnostic=remoteDiagnostic(error)?.message??'Cowork is unavailable. Ask the operator to verify the daemon configuration and service.';
-    process.stderr.write(diagnostic+'\n');
-    const fallback = new McpServer({ name: 'au-cowork-personal', version: VERSION }, { instructions: diagnostic });
-    await fallback.connect(new StdioServerTransport()); return null;
-  });
-  if (runtime) {
-    await runtime.server.connect(new StdioServerTransport());
-    let closing = false; const close = async () => { if (closing) return; closing = true; await runtime.shutdown(); process.exitCode = 0; };
-    process.stdin.once('end', close); process.stdin.once('close', close); process.once('SIGINT', close); process.once('SIGTERM', close);
-  }
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
+ const runtime=await createRuntime();
+ await runtime.server.connect(new StdioServerTransport());
+ let closing=false;const close=async()=>{if(closing)return;closing=true;await runtime.shutdown();process.exitCode=0;};
+ process.stdin.once('end',close);process.stdin.once('close',close);process.once('SIGINT',close);process.once('SIGTERM',close);
 }

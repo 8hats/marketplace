@@ -1,6 +1,5 @@
 [
   "@modelcontextprotocol/sdk",
-  "@ours.network/sdk",
   "ajv",
   "ajv-formats",
   "fast-deep-equal",

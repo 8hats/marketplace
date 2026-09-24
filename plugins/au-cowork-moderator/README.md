@@ -1,147 +1,28 @@
-# AU Cowork Moderator
+# AU Cowork Moderator — central HTTPS
+Use a Moderator invitation issued by the room's human Owner. Selecting this plugin exposes Moderator tools but never grants server-side authority. A Personal credential remains subject to its current inherited roles. Agents cannot approve artifact results; explicit human Owner approval remains required.
 
-Separate Moderator product profile with 22 product tools. Standalone `connect_to_room({"invite":"<one-use invite>"})` creates a unique persistent identity and returns a durable `connection_id`. Its identity/CID and room contact are recorded in `cowork-agent-connections/` under local daemon state, or the client’s private `~/.au-cowork-remotes/<endpoint-hash>/` directory in remote mode.
+The old `AC_MODERATOR_INPUTS_MODULE` supplied-SDK integration is removed and rejected. Native identities/connections cannot be converted: preserve old state and request a fresh central invitation. Automatic Fleet launching is not part of this plugin; manual invitation setup is supported.
 
-After restarting the MCP session, use `list_rooms({})` and `connect_to_room({"connection_id":"<saved id>"})`. Reconnect preserves the identity/CID and room without redeeming another invitation. Selection is explicit, and a busy identity rejects binding without force. Standalone mode exposes 26 tools including foreground wait, connect, disconnect, and list.
+`connect_to_room` preserves its strict Moderator schema: supply exactly one of `invite` or `connection_id`; room-name selection is Personal-only. `disconnect_from_room` retains the central credential and staged inbox, and `list_rooms` lists saved central connections. Native identity/CID fields are replaced by central room/agent/connection IDs. `enter_room` and `get_room_status` are additive onboarding/health tools. The old externally bound SDK lifecycle is not supported. Saved central connections may be used by either profile, but the selected profile never changes the credential's server-authorized roles.
 
-Disconnect/shutdown release the lease, retaining identity and room membership. Invitation attempts are recorded durably before redemption and never retried, including after a process restart. Unknown outcomes retain the identity and record for inspection. Product association can remain pending after native contact establishment; follow the bootstrap checklist.
+Requires Node.js 22 or newer. Configure `AC_COWORK_URL=https://your-cowork-service.example`, or supply the service's HTTPS agent invitation directly to `connect_to_room`. The invitation is exchanged once for a credential scoped to that agent and room.
 
-Existing temporary sessions are not converted. No supported SDK promotion operation exists; migrating one requires an explicitly issued new invite and persistent connection, while old room history remains intact. Operator-supplied already-bound Moderator inputs retain their existing lifecycle.
+Room connections require private local storage: POSIX owner-only permissions on Linux/macOS, or verified NTFS ACLs on native Windows using built-in Windows PowerShell. Windows storage requires the current user to own the state directory, inheritable private access, and no untrusted access or ancestor replacement rights; junctions/reparse points are rejected. Every new credential file is ACL-checked before writing secrets. Files are flushed before atomic rename; directory fsync is POSIX-only. Never bypass these checks or use a shared/network state directory.
 
-## Runtime inputs
+Credentials, saved connections and staged mail live under `~/.local/share/au-cowork-central` (override with an absolute `AC_COWORK_HOME`). POSIX directories are 0700 and records 0600; Windows ACLs allow only the current user, SYSTEM and Administrators. Never paste credentials or invitation URLs into logs, issue reports or room messages.
 
-Set AC_MODERATOR_INPUTS_MODULE in the MCP host environment to an absolute local
-ES module exporting async createModeratorInputs(). The module supplies:
+Use `list_rooms` and reconnect with the returned `connection_id` after restart. Disconnect keeps credentials and the durable inbox. A connection is exclusive to one process. The monitor stages each bounded event page before advancing its cursor; `ac_messages` and `ac_files` explicitly consume selected records. `wait_for_room_event` does not consume mail, supports cancellation, and permits simultaneous sending. Network interruptions reconnect with bounded exponential backoff and jitter.
 
-- client: the ours SDK client already bound to the assigned Moderator identity;
-- identityName and identityCid: exact assigned identity evidence;
-- roomCid and roomName: exact selected native room/contact;
-- monitor: optional boolean, default true, controlling body-free notification watch.
+The MCP tool names and product argument schemas are preserved. Room metadata, actor IDs and message IDs are now central identifiers. Replies use those stable IDs, including sentence references. File metadata and streamed downloads are checked against SHA-256. Product result submission still requires explicit human Owner approval.
 
-The integration owns the SDK lease and any initial invitation redemption.
-Startup and tool calls verify the assigned identity. Shutdown stops this plugin's
-notification watch and MCP server; it does not release the integration's lease.
-No secrets or actual installation inputs are shipped in this public repository.
+Legacy daemon settings are rejected. No daemon installation, discovery, identity, native invitation or native transport is used by this plugin. Existing native connections cannot be reused: ask the room owner for a new central invitation. Preserve old state until migration is verified. If an exchange or credential rotation succeeds but its response is lost, inspect the accepted participant in the web application, remove that agent, and issue a replacement invitation.
 
-With supplied inputs, discovery lists the 22 product tools plus
-`wait_for_room_event`.
-Without inputs, product calls return not_connected until manual connection.
-Invalid configured inputs or wrong startup identity fail visibly with a redacted
-error. No identity repair, forced binding, daemon lifecycle or automatic mutation
-retry is attempted. Backend room admission and current Moderator authorization
-are required independently of the selected plugin.
+On uncertain sends, the plugin retains the idempotency key in private state. Repeating the same request while unresolved reuses that key. Do not change the request to force a retry; inspect current room activity first. Permanently inaccessible historical events become metadata-only unavailable records so they do not block newer mail.
 
-## Tools
+Development: `npm ci && npm test && npm run build`. The distributed MCP entry is `dist/cowork-mcp.mjs`.
 
-Shared: ac_commands, ac_read, ac_send_file, ac_files, ac_version_commit,
-ac_review_submit, ac_remark_record, ac_remark_set, ac_request_create,
-ac_request_decide, ac_instruction_propose, ac_history_annotate, ac_message,
-ac_messages.
+The monitor renews credentials during the final 24 hours of their 30-day lifetime. A durable pending marker prevents replay after an uncertain rotation; authorization/renewal failures stop the monitor. Request a replacement invitation after the inviting human removes the old agent. A crashed lease is recovered only if its PID is absent; malformed or ambiguous recovery state fails closed. Inspect and stop all users of that connection before removing a leftover empty `.lease.recovery` directory.
 
-Moderator additions: ac_request_route, ac_review_publish, ac_publication_propose,
-ac_intervention_record, ac_stage_explain, ac_result_create.
+File metadata is paged, with at most 100 records per page. `has_more` indicates further catch-up; call again after consuming listed files. `ac_files({open_wire_id})` returns verified bounded `data_base64`, not a daemon-local path. `ac_commands` retains structured command definitions and an ok/data capability envelope. Central IDs replace native IDs. Once a successful MCP call has completed locally, a later deliberate identical call is a new action; only unresolved HTTP mutations automatically retain their prior idempotency key.
 
-Arguments use API r5 section3/4, r11 section7.2/7.3, with public ac_join removed by
-Owner #370. Underlying product functions are shared with the Personal source at
-build time. The generated bundle contains everything it needs: installing the
-Personal plugin alongside it is not required. Use ac_messages after message or
-result wakes, ac_files after file wakes. Output/identity checks precede retained
-mail acknowledgement; unknown outcomes require inspection before a new command.
-
-## Development
-
-First run `npm ci` in `../au-cowork-personal` for the shared source tests.
-Then, from this directory, run `npm ci`, `npm run build`, and `npm test`.
-Build resolution includes this plugin's pinned node_modules for shared source imports. CI also checks
-byte-identical rebuilds. Tests use mock bound clients and real MCP transports,
-including a configured standalone stdio bundle; they do not launch Fleet agents
-or touch a live daemon. Critic accepted both plugins at
-`eb1ff53280939e5da2d4c5475c8418c70a9e2ae5`, with all 35 Personal tests and
-five Moderator tests passing, standalone MCP checks, and byte-identical rebuilds.
-Live Fleet integration was not exercised. This local candidate has not been published.
-
-Monitor failures emit sanitized stage/error classifications to stderr. For local
-troubleshooting, set `AC_MONITOR_DEBUG=1` in the MCP process environment to include
-stage names, counts, and matching booleans; these diagnostics exclude message
-bodies, invitations, identities, and raw error strings.
-
-## Portable foreground monitoring
-
-Connection automatically starts the session monitor. Drain `ac_messages({})` in
-bounded pages until empty (finish a bounded batch before continuing other work).
-Handle file wakes using `ac_files`. If the host has verified automatic background
-wake support, use its notifications. Advertising MCP logging does not establish
-that the host can wake an idle agent.
-
-Otherwise call `wait_for_room_event({"timeout_ms":50000})`. It shares the existing
-identity and monitor, checks unread and retained messages, and consumes no mail.
-On an event, handle it, drain mail, then wait again until the owner stops. On
-`timeout`, rearm. On cancellation or disconnection, stop. The timeout range is
-1000–50000 milliseconds, default 50000. One foreground wait is allowed per MCP
-session; another returns `already_waiting`. Disconnect remains callable during
-a wait. Identity mismatches fail closed and return `identity_mismatch`.
-
-Responses contain `status` (`event`, `timeout`, `cancelled`, `disconnected`,
-`already_waiting`, `identity_mismatch`, or `unavailable`). An `event` response also
-contains the same body-free event metadata emitted by the background monitor.
-MCP cancellation cleans up the waiter; some hosts surface their own cancellation
-error instead of the tool's cancelled response. No notification queue or extra
-identity lease is created.
-
-Browser chat includes `application_message` in `ac_messages` only after authenticated room-envelope validation. Its author contains the human's product ID, display name, and role labels with `attribution: application_session`. This is application attribution, not a human native CID, external identity verification, or owner authority. Raw native signer and body remain intact. Use current product permissions for actions; role labels are a snapshot at send time.
-
-
-### Verify application readiness after connecting
-
-Immediately call `ac_read({kind:"context"})` and
-`ac_read({kind:"capabilities"})` before claiming readiness or describing your
-roles. Connection returns a `bootstrap` checklist; it deliberately does not
-perform additional network commands whose timeout could obscure a successful
-one-time invitation redemption. Reconnection carries the same checklist.
-
-`context.association.state` confirms the current product association;
-`context.transport.ready` reports transport readiness; `context.assigned_roles`
-is the authoritative list of your roles. `room.roles` is only the custom role
-catalogue, and `capabilities.assignable_roles` lists roles you may assign.
-Neither an empty custom catalogue nor empty assignable roles removes an assigned
-Participant role. Use `available_actions` and concrete `blocked_actions` to decide
-what you can do. `policy_unresolved` requires workflow policy configuration;
-requesting another role does not resolve it. `transport_pending` means wait for
-the room connection. A forbidden action requires current command eligibility.
-
-If association is pending, wait and repeat only the context/capability reads.
-Never redeem the invitation again or claim a role was granted from transport
-contact status alone. These fields do not grant permissions or verify a future
-external authenticator.
-
-Local connection records use the selected daemon state; remote records use the client’s private `~/.au-cowork-remotes/<endpoint-hash>/` directory. The Personal legacy room-name catalogue defaults to `cowork-personal-legacy` under the same selected local or remote client directory; no home catalogue is scanned or migrated automatically. To explicitly reopen an old Personal catalogue, set `AC_LEGACY_ROOM_REGISTRY` to its absolute directory (formerly `~/.au-cowork-personal`, expanded by the operator). This does not change the persistent connection registry.
-
-## Ask a human to review a file
-
-1. Read `ac_read({"kind":"attachment","id":"<original native file ID or product attachment ID>"})`. Use the returned `id` and `attachment.hash`; do not guess a hash or use an unrelated wire ID. If the send receipt supplies no native file ID, list `ac_read({"kind":"attachment"})` and select the verified attachment.
-2. Read `ac_read({"kind":"members"})` and select the actual human reviewer’s `actor_id`; the member’s `id` identifies membership, not the reviewer actor.
-3. Generate and persist one unique request key, then call `ac_request_review({"attachment_id":"<returned id>","displayed_hash":"<attachment.hash>","reviewer_actor_id":"<human actor id>","question":"Check the evidence and conclusions.","idempotency_key":"<caller-generated stable unique key>"})`.
-4. Save the returned review ID. Read `ac_read({"kind":"file_review","id":"<review id>"})` for the actual human response. `ac_read({"kind":"file_review"})` lists authorized requests for recovery when the response was lost. Drain `ac_messages` on room notifications.
-
-An unknown outcome does not mean the request failed. Inspect late command results and review resources; never automatically resend, change the key, or claim the human reviewed the file before a recorded response exists. Reusing the same key is reserved for explicit recovery after inspection. This file review does not publish a document review round or approve a document. Agents cannot submit the human’s response through this tool.
-
-## Submit an artifact result for Owner approval
-
-Both profiles expose `ac_submit_result`. Read `ac_read({"kind":"attachment","id":"<file or attachment id>"})` first and use the returned existing product attachment ID and exact `attachment.hash`:
-
-```json
-{"summary":"Final evidence and conclusions","artifacts":[{"attachment_id":"<existing product attachment id>","displayed_hash":"<exact lowercase SHA-256>"}],"idempotency_key":"<caller-generated stable unique key>"}
-```
-
-This invokes `consumer.ac.artifact.result.submit`. Summary must be nonempty and at most 8000 Unicode characters; supply 1–20 unique attachment IDs and a nonempty idempotency key of at most 128 characters. Persist the key before submission. Submission is an explicit action: positive review feedback must never trigger it automatically. Submission still requires subsequent explicit human Owner approval in the application; agents cannot approve results.
-
-Save the result ID and read `ac_read({"kind":"artifact_result","id":"<result id>"})`. List authorized results with `ac_read({"kind":"artifact_result"})`. The projection contains `id`, `summary`, `artifacts` (each with `id`, `filename`, `mime`, `size`, `hash`), `manifest_hash`, `submitted_by`, `submitted_at`, optional `approved_by`/`approved_at`, `is_current`, and `available_actions`. Check those fields to distinguish submission from approval. On an unknown outcome, inspect these reads and retained `ac_messages`; never automatically retry or invent a replacement key.
-
-Existing MCP sessions must reload the rebuilt plugin to discover this tool. Saved identities and room connections keep their existing persistence behavior.
-
-## Remote ours daemon
-
-Use Node 22 or newer. Configure paired `AU_OURS_URL` / `AU_OURS_API_TOKEN` settings
-or project `.au-ours.json` with `url` and a private `tokenFile`. See
-[remote connection setup](docs/remote-ours.md) for HTTPS, setup recovery,
-persistent connection storage, and external lease cleanup.
+Packaging verification: `node scripts/package-check.mjs` after building. It packs locally, installs in a disposable directory and checks a copied standalone bundle with a real stdio MCP client. It does not publish or contact a room.

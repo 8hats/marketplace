@@ -21,7 +21,7 @@ if(!target){console.error('usage: stdio-probe.mjs <entry.mjs> [--ignore-stdout] 
 
 const home=await fs.mkdtemp(path.join(os.tmpdir(),'stdio-probe-'));
 // HOME is POSIX-only; Windows reads USERPROFILE. Set both so the probe never touches real state.
-const env={...process.env,HOME:home,USERPROFILE:home,OURS_STATE_DIR:path.join(home,'ours')};
+const env={...process.env,AC_COWORK_HOME:path.join(home,'central')};
 let entry=target;
 if(isolate){entry=path.join(home,path.basename(target));await fs.copyFile(target,entry);}
 const child=spawn(process.execPath,[entry],{env,stdio:['pipe',ignoreStdout?'ignore':'pipe','pipe']});
