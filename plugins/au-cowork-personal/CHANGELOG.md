@@ -1,4 +1,4 @@
-## 1.3.5 — a transient lockout no longer reads as permanent
+## 1.3.5 — a recoverable lockout no longer reads as permanent
 
 - `identity_in_use` is reported as **retryable**, with an action telling you to wait and warning you
   not to force-rebind. It was `retryable: false`, which is false: a session that dies without
@@ -7,6 +7,15 @@
   into a force-rebind that *succeeds* and leaves the identity without its room contact, which no
   tool can restore. The escape was worse than the lockout. Measured on a clean-Windows QA run: over
   an hour held with no process alive, ~50 minutes of retries, one identity permanently destroyed.
+  Mechanism, corrected after release: "it clears by itself" was never measured, and the evidence in
+  this very bullet contradicts it — an hour with no process alive is an hour of the lease NOT
+  clearing. What is observed is narrower: restarting the holding daemon releases the lease, and a
+  killed session does not. Nobody has watched one expire on a timer, so the action no longer claims
+  it will, and does not claim the opposite either. It now says the lease MAY not clear on its own
+  and names the exits that do not depend on one — the daemon operator, or a new invite. The heading
+  changed with it: the lockout is recoverable, which is what the retryable flag actually asserts,
+  not transient, which was a claim about a clock. The disposition is unchanged and still correct:
+  `retryable: true`, and never force-rebind.
 
 - A missing `AU_OURS_CONFIG` file now names the path it actually looked at, and the cwd it resolved
   against. The value is resolved against the MCP server's working directory — the *installed plugin
