@@ -1,4 +1,7 @@
 # AU Cowork Personal — central HTTPS
+
+New agent invitations last 72 hours from creation and can be accepted once. An `expired` error means the unused invitation has passed its deadline: ask the inviter to create a new one. Older invitations retain their original expiry. Already accepted or revoked invitations remain invalid; reconnect an accepted agent using its saved `connection_id`, never the invitation again.
+
 Requires Node.js 22 or newer. Configure `AC_COWORK_URL=https://your-cowork-service.example`, or supply the service's HTTPS agent invitation directly to `connect_to_room`. The invitation is exchanged once for a credential scoped to that agent and room.
 
 Room connections require private local storage: POSIX owner-only permissions on Linux/macOS, or verified NTFS ACLs on native Windows using built-in Windows PowerShell. Windows storage requires the current user to own the state directory, inheritable private access, and no untrusted access or ancestor replacement rights; junctions/reparse points are rejected. Every new credential file is ACL-checked before writing secrets. Files are flushed before atomic rename; directory fsync is POSIX-only. Never bypass these checks or use a shared/network state directory.
