@@ -120,18 +120,41 @@ test('an unmapped failure correlates its request_id on stderr without leaking de
 
 test('identity_in_use is retryable and its action warns against force-rebind', async () => {
   // F1 regression guard. A session that dies without disconnecting leaves the daemon holding the
-  // lease, and it clears on its own. Reporting retryable:false told callers to stop for good, which
-  // sent one agent hunting for an escape and into a force-rebind that PERMANENTLY destroyed the
-  // identity (it loses its room contact and no tool can restore one). Waiting is the only safe exit.
+  // lease, and the condition is RECOVERABLE — not transient. Reporting retryable:false told callers
+  // to stop for good, which sent one agent hunting for an escape and into a force-rebind that
+  // PERMANENTLY destroyed the identity (it loses its room contact and no tool can restore one).
+  // Waiting is not the exit: the lease may never clear by itself, so escalate to the daemon
+  // operator or a new invite. The companion F8 guard below pins that this action claims no
+  // mechanism in either direction.
   const c = client({ chooseIdentity: async () => { throw Object.assign(new Error('bound'), { code: 'BOUND_ELSEWHERE' }); } });
   const srv = new FakeServer();
   await createRuntime({ session: session(c), server: srv, registry: registry([{ room_name: 'Room', identity_name: 'Tutor', contact_cid: CID, membership_state: 'ready' }]) });
   const out = (await srv.tools.get('connect_to_room').fn({ room_name: 'Room' })).structuredContent;
   assert.equal(out.ok, false);
   assert.equal(out.error.code, 'identity_in_use');
-  assert.equal(out.error.retryable, true, 'identity_in_use is transient — reporting it unretryable causes the force-rebind trap');
+  assert.equal(out.error.retryable, true, 'identity_in_use is recoverable — reporting it unretryable causes the force-rebind trap');
   assert.match(out.error.action ?? '', /wait/i);
   assert.match(out.error.action ?? '', /force/i, 'the action must warn against force-rebind');
+});
+
+test('identity_in_use action states no unverified mechanism', async () => {
+  // F8 regression guard. The action MUST tell the caller what to do without asserting how the
+  // daemon behaves. Nobody has measured whether the lease expires: the only observations are a
+  // restart releasing it and one lease held over an hour with no process alive. So neither "it
+  // clears by itself" nor "it will never clear" is ours to say, and the wrong one of those two
+  // turns the action into an instruction that never succeeds — wait forever instead of escalating.
+  // This guards the string the other three sites keep getting re-seeded from.
+  const c = client({ chooseIdentity: async () => { throw Object.assign(new Error('bound'), { code: 'BOUND_ELSEWHERE' }); } });
+  const srv = new FakeServer();
+  await createRuntime({ session: session(c), server: srv, registry: registry([{ room_name: 'Room', identity_name: 'Tutor', contact_cid: CID, membership_state: 'ready' }]) });
+  const action = (await srv.tools.get('connect_to_room').fn({ room_name: 'Room' })).structuredContent.error.action ?? '';
+  // These forbid the ASSERTION, not the phrase. "may not clear on its own" is the required hedge
+  // and must survive; "the lease clears on its own" must not. A first draft of this guard used
+  // /clears? (by itself|on its own)/ and rejected its own required wording.
+  assert.doesNotMatch(action, /lease clears (by itself|on its own|automatically)|clears itself/i, 'the action must not claim the lease expires — unmeasured');
+  assert.doesNotMatch(action, /will not clear|never clears?|does not clear/i, 'nor claim the opposite — equally unmeasured');
+  assert.match(action, /may not clear on its own/i, 'it must hedge the mechanism it cannot verify');
+  assert.match(action, /operator|new invite/i, 'and name the exit that does not depend on a timer');
 });
 
 test('widening retryable does not make unrelated codes retryable', async () => {

@@ -17,17 +17,22 @@ import { CoworkSession } from './session.mjs';
 import { RoomRegistry } from './registry.mjs';
 import { MonitorManager } from './monitor-manager.mjs';
 
-export const VERSION = '1.3.5';
+export const VERSION = '1.3.6';
 const text = (data) => ({ content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data });
 const ok = (data) => text({ ok: true, data, request_id: randomUUID() });
 const fail = (code, message, retryable = false, action, requestId = randomUUID()) => text({ ok: false, error: { code, message, retryable, ...(action ? { action } : {}) }, request_id: requestId });
-// identity_in_use is TRANSIENT: a session that died without disconnecting leaves the daemon holding
-// the lease, and it clears on its own. Reporting it as non-retryable told callers to stop for good,
-// which sent one agent hunting for an escape and into a force-rebind that permanently destroyed the
-// identity (it loses its room contact, and nothing can put one back). Waiting is the only safe exit.
+// identity_in_use is RECOVERABLE: a session that died without disconnecting leaves the daemon
+// holding the lease, and the condition has an exit. Reporting it as non-retryable told callers to
+// stop for good, which sent one agent hunting for an escape and into a force-rebind that
+// permanently destroyed the identity (it loses its room contact, and nothing can put one back).
+// RECOVERABLE, NOT TRANSIENT, and the distinction is load-bearing: a restart of the holding
+// daemon demonstrably releases the lease, but no one has ever observed one expire on a timer --
+// one was held over an hour with no process alive. So the exit may require the daemon operator or
+// a fresh invite. Do not restore any claim that the lease clears by itself; it is unmeasured, and
+// so is the opposite. See the F8 guard in test/handlers.test.mjs.
 const RETRYABLE_CODES = new Set(['daemon_unavailable', 'identity_in_use']);
 const RETRY_ACTIONS = {
-  identity_in_use: 'Another session still holds this identity. Wait and retry the same connection_id; the lease clears by itself. Do NOT force-rebind: it evicts the old session, the identity loses its room contact, and no tool can restore one.',
+  identity_in_use: 'Another session still holds this identity. Retry the same connection_id a couple of times in case the holder is still shutting down. If it persists, do not keep waiting — the lease may not clear on its own: ask the daemon operator to release it, or get a new invite. Do NOT force-rebind: it evicts the old session, the identity loses its room contact, and no tool can restore one.',
 };
 // An error that collapses to internal_error is by definition one nobody anticipated, and the client
 // is told to "use request_id for diagnostics" while that id correlates with nothing anywhere. Emit
