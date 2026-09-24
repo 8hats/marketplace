@@ -1,3 +1,13 @@
+## 2.0.0 — central HTTPS
+
+- Replaces daemon discovery, identities and native room transport with HTTPS invitation exchange and private agent credentials.
+- Retains tool schemas; adds durable staged mail, idempotent uncertain-send retries, bounded file paging, rotation and certificate verification.
+- See README for changed central IDs/file return values and migration/recovery instructions.
+
+## Historical 1.x releases
+
+The notes below describe retired daemon-based versions, not current setup instructions.
+
 ## 1.3.6 — the lockout is recoverable, which is not the same as transient
 
 - Stop telling a locked-out caller how the daemon behaves. 1.3.5's `identity_in_use` action said

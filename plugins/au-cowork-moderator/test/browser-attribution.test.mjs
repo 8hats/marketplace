@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {applicationMessage} from '../../au-cowork-personal/src/browser-attribution.mjs';
+import {applicationMessage} from '../src/legacy-personal/browser-attribution.mjs';
 const room='A'.repeat(64),agent='B'.repeat(64);
 const app={version:1,kind:'au_cowork_human_message',transport_role:'Web',author:{id:'human-1',kind:'human',display_name:'Alice',role_labels:['Reviewer'],attribution:'application_session'},text:'Hello'};
 const envelope={version:1,kind:'room_msg',message_id:'message',room_id:'room',room_name:'Room',at:'2026-09-16T00:00:00Z',author:{identity:room,display_name:'Web',role:'Web'},text:JSON.stringify(app)};

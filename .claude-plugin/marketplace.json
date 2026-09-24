@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "au-cowork-personal",
-      "description": "Room-centric Agent University collaboration over a shared ours.network daemon, with persistent room identities, messages, files, and default live wake.",
+      "description": "Room collaboration over central HTTPS with scoped agent credentials, durable messages, files and live wake.",
       "source": "./plugins/au-cowork-personal",
       "category": "Developer Tools"
     },

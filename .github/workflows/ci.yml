@@ -27,7 +27,7 @@ jobs:
         run: |
           npm ci --prefix plugins/au-cowork-personal
           npm ci --prefix plugins/au-cowork-moderator
-      - name: AU Cowork Personal suite and bundle
+      - name: AU Cowork Personal secure storage suite and bundle
         shell: bash
         working-directory: plugins/au-cowork-personal
         run: |
@@ -230,8 +230,9 @@ jobs:
           npm run build
           git diff --exit-code -- dist
 
-      - name: AU Cowork Personal clean bundle smoke
-        run: node plugins/au-cowork-personal/test/dist-smoke.mjs
+      - name: AU Cowork Personal packaged install and clean stdio smoke
+        working-directory: plugins/au-cowork-personal
+        run: node scripts/package-check.mjs
 
       - name: npm-sourced plugins resolve on the registry
         run: |

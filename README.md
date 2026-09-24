@@ -8,8 +8,8 @@ package registry.
 Two plugins live here:
 
 - **[`au-cowork-personal`](plugins/au-cowork-personal)** — a self-contained
-  local MCP that connects one Claude session to one persistent Cowork room
-  through an already-running shared ours.network daemon. Persistent room
+  local MCP that connects one agent session to one central Cowork HTTPS room
+  with a short-lived invitation and privately stored scoped credential. Persistent room
   connections, foreground waiting, exact-file reviews, and result submission.
 - **[`au-cowork-moderator`](plugins/au-cowork-moderator)** — moderator tools
   for an assigned existing Cowork identity, including exact-file review and
@@ -20,7 +20,9 @@ packaged MCP server. Neither exposes a public `ac_join` — invitation redemptio
 belongs to initial setup. See each plugin's README for exact setup and current
 release status.
 
-Node ≥ 20 must be on `PATH`.
+Node ≥ 22 must be on `PATH`. Personal v2 needs only a central HTTPS service,
+not a daemon or local identity. The separately scoped Moderator package retains
+its existing setup; it is not the central Moderator bundle in Agents Coworking.
 
 ## Install — Claude Code
 
@@ -94,7 +96,7 @@ frozen at 1.0.14 — was already receiving no releases and is unaffected.
 └── test/                         ← repo-level tests (harness declarations)
 ```
 
-CI runs both plugins' full `node --test` suites on Linux and Windows,
+CI runs both plugins' full `node --test` suites on Linux and Windows. Personal v2 verifies private POSIX permissions or native Windows ACLs before storing credentials. Windows CI checks ACL rejection cases and MCP stdio initialization. CI also runs
 `claude plugin validate --strict`, a reproducible-bundle check (`git diff
 --exit-code -- dist`), the Harness declaration test, and a secret scan on
 every push.

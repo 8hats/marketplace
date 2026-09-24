@@ -6,15 +6,15 @@ import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
 import {ListToolsRequestSchema,CallToolRequestSchema} from '@modelcontextprotocol/sdk/types.js';
 import {zodToJsonSchema} from 'zod-to-json-schema';
 import {z} from 'zod';
-import {createProductTools} from '../../au-cowork-personal/src/product-tools.mjs';
-import {MonitorManager} from '../../au-cowork-personal/src/monitor-manager.mjs';
+import {createProductTools} from './legacy-personal/product-tools.mjs';
+import {MonitorManager} from './legacy-personal/monitor-manager.mjs';
 
-import {ForegroundWait,waitSchema,waitDescriptor,waitResult,monitorInstructions} from '../../au-cowork-personal/src/foreground-wait.mjs';
-import {remoteDiagnostic,remoteSetupInstructions} from '../../au-cowork-personal/src/remote-config.mjs';
-import {sessionRegistry} from '../../au-cowork-personal/src/session-registries.mjs';
-import {CoworkSession} from '../../au-cowork-personal/src/session.mjs';
-import {ConnectionRegistry,connectionView} from '../../au-cowork-personal/src/connections.mjs';
-import {connectInvite,reconnectInvite} from '../../au-cowork-personal/src/invite-session.mjs';
+import {ForegroundWait,waitSchema,waitDescriptor,waitResult,monitorInstructions} from './legacy-personal/foreground-wait.mjs';
+import {remoteDiagnostic,remoteSetupInstructions} from './legacy-personal/remote-config.mjs';
+import {sessionRegistry} from './legacy-personal/session-registries.mjs';
+import {CoworkSession} from './legacy-personal/session.mjs';
+import {ConnectionRegistry,connectionView} from './legacy-personal/connections.mjs';
+import {connectInvite,reconnectInvite} from './legacy-personal/invite-session.mjs';
 
 export const VERSION='1.2.3';
 const cid=z.string().regex(/^[a-fA-F0-9]{64}$/);

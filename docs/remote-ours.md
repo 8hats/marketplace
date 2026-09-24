@@ -1,7 +1,7 @@
 # Connect cowork tools to a remote ours daemon
 
-Both Personal (`au-cowork-personal`) and Moderator
-(`au-cowork-moderator`) use the same connection settings. Run Node 22 or
+This guide applies only to the separately scoped Moderator (`au-cowork-moderator`).
+Personal v2 uses central HTTPS; see its README instead. Run Node 22 or
 newer. The daemon must already be running; plugins do not install or manage it.
 
 Set these two variables in the environment of the MCP server process:
