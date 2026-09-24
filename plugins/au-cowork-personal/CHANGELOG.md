@@ -1,4 +1,23 @@
-## 1.3.5 — a recoverable lockout no longer reads as permanent
+## 1.3.6 — the lockout is recoverable, which is not the same as transient
+
+- Stop telling a locked-out caller how the daemon behaves. 1.3.5's `identity_in_use` action said
+  "the lease clears by itself" and instructed you to wait for it. Nobody has measured that. The only
+  observations are that restarting the holding daemon releases the lease, and that one lease was
+  held for over an hour with no process alive — which 1.3.5's own release note cited as evidence
+  while asserting the opposite. If there is no timer, "wait and retry" is an instruction that never
+  succeeds: you wait instead of escalating, and burn the time the 1.3.5 fix existed to save.
+  The action now claims nothing in either direction. It says the lease **may** not clear on its own
+  and names the exits that do not depend on a timer — ask the daemon operator, or get a new invite.
+  That wording stays correct whether the lease expires in thirty minutes or never, which is the
+  property both earlier versions lacked. `retryable: true` is unchanged and still right: the
+  condition is RECOVERABLE — it has an exit — which is what that flag asserts. "Transient" was a
+  claim about a clock nobody has watched. Pinned by a test that fails if either the original claim
+  or its negation returns.
+- No interface change: same tool signatures, same error codes, same `retryable` value. The bundle is
+  rebuilt, so this is a new version rather than an amendment to 1.3.5 — two different bundles must
+  never share one version number, or verifying the artifact by hash stops meaning anything.
+
+## 1.3.5 — a transient lockout no longer reads as permanent
 
 - `identity_in_use` is reported as **retryable**, with an action telling you to wait and warning you
   not to force-rebind. It was `retryable: false`, which is false: a session that dies without
