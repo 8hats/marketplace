@@ -40,6 +40,13 @@ jobs:
           node --test --test-concurrency=1
           node build.mjs
 
+      - name: Windows Moderator source and isolated bundle MCP probes
+        shell: bash
+        working-directory: plugins/au-cowork-moderator
+        run: |
+          node ../au-cowork-personal/scripts/stdio-probe.mjs src/server.mjs
+          node ../au-cowork-personal/scripts/stdio-probe.mjs dist/cowork-mcp.mjs --isolate
+
       # Does the plugin actually serve MCP on Windows? Answered by probe, not by argument:
       # both the bundle and the source answer a real `initialize` frame here. These two are a
       # REAL check -- the probe exits non-zero if a server fails to serve -- so a regression
@@ -232,6 +239,10 @@ jobs:
 
       - name: AU Cowork Personal packaged install and clean stdio smoke
         working-directory: plugins/au-cowork-personal
+        run: node scripts/package-check.mjs
+
+      - name: Moderator packaged install and clean stdio smoke
+        working-directory: plugins/au-cowork-moderator
         run: node scripts/package-check.mjs
 
       - name: npm-sourced plugins resolve on the registry

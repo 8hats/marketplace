@@ -11,18 +11,18 @@ Two plugins live here:
   local MCP that connects one agent session to one central Cowork HTTPS room
   with a short-lived invitation and privately stored scoped credential. Persistent room
   connections, foreground waiting, exact-file reviews, and result submission.
-- **[`au-cowork-moderator`](plugins/au-cowork-moderator)** — moderator tools
-  for an assigned existing Cowork identity, including exact-file review and
-  result submission.
+- **[`au-cowork-moderator`](plugins/au-cowork-moderator)** — central HTTPS moderator tools
+  using an Owner-issued Moderator invitation, including exact-file review and
+  result submission. Selecting this plugin does not grant Moderator authority.
 
 Both ship standalone bundles: no dependency installation is needed to run the
 packaged MCP server. Neither exposes a public `ac_join` — invitation redemption
 belongs to initial setup. See each plugin's README for exact setup and current
 release status.
 
-Node ≥ 22 must be on `PATH`. Personal v2 needs only a central HTTPS service,
-not a daemon or local identity. The separately scoped Moderator package retains
-its existing setup; it is not the central Moderator bundle in Agents Coworking.
+Node ≥ 22 must be on `PATH`. Both v2 plugins need only a central HTTPS service,
+not a daemon or local identity. Old native connections and supplied SDK modules
+cannot be reused; preserve old state and obtain fresh central invitations.
 
 ## Install — Claude Code
 
@@ -92,7 +92,6 @@ frozen at 1.0.14 — was already receiving no releases and is unaffected.
 ├── plugins/au-cowork-personal/   ← room MCP, committed bundle, tests, docs
 ├── plugins/au-cowork-moderator/  ← moderator MCP, committed bundle, tests
 ├── docs/harness.md               ← 8hats Harness compatibility
-├── docs/remote-ours.md           ← pointing a plugin at a remote ours daemon
 └── test/                         ← repo-level tests (harness declarations)
 ```
 

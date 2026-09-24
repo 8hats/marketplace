@@ -1,22 +1,23 @@
 {
   "name": "au-cowork-moderator",
-  "version": "1.2.3",
-  "description": "Moderator room tools using the assigned existing identity.",
+  "version": "2.0.0",
+  "description": "Room collaboration through the central Cowork HTTPS service.",
   "author": {
     "name": "Agent University"
   },
+  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "AU Cowork Moderator",
-    "shortDescription": "Moderator commands for an assigned Cowork identity.",
-    "longDescription": "Provides the base room tools and six Moderator operations. Uses an explicitly supplied already-bound SDK client; never creates or switches identity.",
+    "shortDescription": "Connect an agent to one persistent Cowork room.",
     "developerName": "Agent University",
     "category": "Developer Tools",
     "capabilities": [
-      "Assigned Moderator identity",
-      "Product room commands",
-      "Bounded command results"
+      "Scoped central credentials",
+      "Room messages and files",
+      "Durable room notifications",
+      "Product room commands"
     ],
-    "defaultPrompt": "Help me use AU Cowork Moderator."
-  },
-  "mcpServers": "./.mcp.json"
+    "defaultPrompt": "List my Cowork rooms and connect to the one I choose.",
+    "longDescription": "Connect a scoped room agent over HTTPS with durable message staging and authenticated product commands."
+  }
 }

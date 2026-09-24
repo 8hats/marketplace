@@ -15,7 +15,7 @@
     },
     {
       "name": "au-cowork-moderator",
-      "description": "Moderator tools for the assigned existing Cowork identity; separate from Personal Agent.",
+      "description": "Central HTTPS Moderator tools with Owner-issued scoped credentials; separate from Personal Agent.",
       "source": "./plugins/au-cowork-moderator",
       "category": "Developer Tools"
     }

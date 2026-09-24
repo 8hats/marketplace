@@ -1,6 +1,6 @@
 {
   "name": "@au-cowork/moderator-plugin",
-  "version": "1.2.3",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
-    "@ours.network/sdk": "3.8.1-nightly.9",
     "zod": "3.25.76",
     "zod-to-json-schema": "3.25.1"
   },
