@@ -6,6 +6,8 @@ import {createRuntime} from '../src/server.mjs';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {InMemoryTransport} from '@modelcontextprotocol/sdk/inMemory.js';
 import {centralTools} from '../src/central-tools.mjs';
+import {z} from 'zod';
+import {zodToJsonSchema} from 'zod-to-json-schema';
 
 const read = async (p) => JSON.parse(await fs.readFile(new URL(p, import.meta.url), 'utf8'));
 
@@ -36,7 +38,12 @@ test('default Moderator MCP exposes all Moderator tools without granting client 
  try{
   await runtime.server.connect(serverTransport);await host.connect(clientTransport);
   assert.equal(host.getServerVersion().name,'au-cowork-moderator');
-  const names=(await host.listTools()).tools.map(tool=>tool.name);
+  const descriptors=(await host.listTools()).tools,names=descriptors.map(tool=>tool.name);
+  const baselineConnect=z.object({invite:z.string().min(1).optional(),connection_id:z.string().uuid().optional()}).strict().refine(input=>Boolean(input.invite)!==Boolean(input.connection_id));
+  assert.deepEqual(descriptors.find(tool=>tool.name==='connect_to_room').inputSchema,{...zodToJsonSchema(baselineConnect,{$refStrategy:'none'}),type:'object'});
+  for(const input of [{},{invite:'invite',connection_id:'11111111-1111-1111-1111-111111111111'},{room_name:'Room'}]){
+   const invalid=await host.callTool({name:'connect_to_room',arguments:input});assert.equal(invalid.isError,true);assert.equal(JSON.parse(invalid.content[0].text).error.code,'invalid_request');
+  }
   assert.deepEqual(names.filter(name=>name.startsWith('ac_')).sort(),centralTools(client,'moderator').map(tool=>tool.name).sort());
   assert.equal(names.includes('ac_join'),false);
   const denied=await host.callTool({name:'ac_review_publish',arguments:{round_id:'round'}});
