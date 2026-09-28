@@ -48,6 +48,8 @@ export class ConnectionStore {
  }
  async save(row){
   await this.init();const target=this.file(row.connection_id),temporary=target+'.'+randomUUID()+'.tmp';
+  // Do not silently replace a credential whose protection changed while bound.
+  try{await this.load(row.connection_id);}catch(error){if(error.code!=='connection_not_found')throw error;}
   const handle=await fs.open(temporary,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);
   try{if(process.platform==='win32')await windowsPrivateState(temporary,false);await handle.writeFile(JSON.stringify(row));await handle.sync();}catch(error){await handle.close();await fs.unlink(temporary).catch(()=>{});throw error;}finally{await handle.close();}
   try{await fs.rename(temporary,target);if(process.platform!=='win32'){const directory=await fs.open(this.root,constants.O_RDONLY);try{await directory.sync();}finally{await directory.close();}}}
@@ -70,13 +72,17 @@ export class ConnectionStore {
     await fs.unlink(filename);handle=await fs.open(filename,constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY|constants.O_NOFOLLOW,0o600);
    }finally{await fs.rmdir(recovery);}
   }
-  try{await handle.writeFile(JSON.stringify(lease));await handle.sync();}finally{await handle.close();}
+  try{if(process.platform==='win32')await windowsPrivateState(filename,false);await handle.writeFile(JSON.stringify(lease));await handle.sync();}catch(error){await handle.close();await fs.unlink(filename).catch(()=>{});throw error;}finally{await handle.close();}
   this.leases.set(id,lease.nonce);
  }
  async release(id){
   const nonce=this.leases.get(id);if(!nonce)return;
   const filename=this.file(id)+'.lease';
-  const lease=JSON.parse(await fs.readFile(filename,'utf8'));if(lease.nonce!==nonce)throw failure('connection_lease_changed');
+  await this.init();if(process.platform==='win32')await windowsPrivateState(filename,false);
+  const reader=await fs.open(filename,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+  let lease;
+  try{const info=await reader.stat();if(!info.isFile()||info.size>1024||process.platform!=='win32'&&(info.mode&0o077)||(process.getuid&&info.uid!==process.getuid()))throw failure('connection_lease_changed');lease=JSON.parse(await reader.readFile('utf8'));}finally{await reader.close();}
+  if(lease.nonce!==nonce)throw failure('connection_lease_changed');
   await fs.unlink(filename);this.leases.delete(id);
  }
 }
@@ -86,10 +92,11 @@ export class CentralClient {
   const incompatible=['OURS_PORT','OURS_STATE_DIR','OURS_CONFIG','OURS_URL','OURS_TOKEN','OURS_TOKEN_FILE','AU_OURS_URL','AU_OURS_API_TOKEN','AU_OURS_CONFIG','AC_REMOTE_OURS_URL','AC_REMOTE_OURS_TOKEN_FILE','AC_MODERATOR_INPUTS_MODULE'].some(key=>process.env[key]);
   if(incompatible)throw failure('legacy_configuration_rejected');
   try{lstatSync(path.resolve('.au-ours.json'));throw failure('legacy_configuration_rejected');}catch(error){if(error.code!=='ENOENT')throw error;}
-  this.fetchFn=fetchFn;this.store=store;this.origin=origin?centralOrigin(origin):undefined;this.onEvent=onEvent;this.row=null;this.monitor=null;this.work=null;this.listeners=new Set();this.stateQueue=Promise.resolve();this.monitorState='disconnected';
+  this.fetchFn=fetchFn;this.store=store;this.origin=origin?centralOrigin(origin):undefined;this.onEvent=onEvent;this.row=null;this.monitor=null;this.work=null;this.listeners=new Set();this.stateQueue=Promise.resolve();this.monitorState='disconnected';this.transition=null;this.disconnecting=null;
  }
+ assertHealthy(){if(this.row&&this.monitor&&!['running','reconnecting','backpressure'].includes(this.monitorState))throw failure(this.monitorState);}
  async request(route,{method='GET',body,bytes,headers={},signal,origin=this.row?.origin??this.origin,credential=this.row?.credential,raw=false}={}){
-  if(!origin)throw failure('central_configuration_required');centralOrigin(origin);
+  this.assertHealthy();if(!origin)throw failure('central_configuration_required');centralOrigin(origin);
   const timeout=AbortSignal.timeout(route.startsWith('/events')?35000:30000),combined=signal?AbortSignal.any([timeout,signal]):timeout;
   let response;
   try{response=await this.fetchFn(origin+'/api/v1/agent'+route,{method,redirect:'error',signal:combined,headers:{...(credential?{authorization:'Bearer '+credential}:{}),...(body!==undefined?{'content-type':'application/json'}:{}),...headers},...(body!==undefined?{body:JSON.stringify(body)}:bytes!==undefined?{body:bytes}:{})});}
@@ -107,8 +114,12 @@ export class CentralClient {
   this.stateQueue=work.catch(()=>{});return work;
  }
  publicRow(row=this.row){return row?{connection_id:row.connection_id,room_name:row.room_name,room_id:row.room_id,as_agent:row.display_name,status:row.connection_id===this.row?.connection_id?'connected':'disconnected',membership_state:'ready',bind_state:row.connection_id===this.row?.connection_id?'bound_here':'unbound'}:null;}
- async connect({invite,connection_id,room_name,as_agent}){
-  if(this.row)throw failure('session_already_bound');
+ async connect(input){
+  if(this.row||this.transition||this.disconnecting)throw failure('session_already_bound');
+  const work=this.bind(input);this.transition=work;
+  try{return await work;}finally{if(this.transition===work)this.transition=null;}
+ }
+ async bind({invite,connection_id,room_name,as_agent}){
   if([invite,connection_id,room_name].filter(Boolean).length!==1)throw failure('invalid_request');
   await this.store.init();
   if(invite){
@@ -125,10 +136,17 @@ export class CentralClient {
   this.startMonitor();return {...this.publicRow(),monitoring_instructions:'Read ac_messages and ac_files. wait_for_room_event waits without consuming mail.'};
  }
  async disconnect(){
-  this.monitor?.abort();await this.work;await this.stateQueue;
-  const row=this.row;this.row=null;this.monitor=null;this.monitorState='disconnected';
-  if(row)await this.store.release(row.connection_id);
-  for(const listener of this.listeners)listener({status:'disconnected'});
+  if(this.disconnecting)return this.disconnecting;
+  const work=(async()=>{
+   // A shutdown during invitation exchange must also release the new lease.
+   await this.transition?.catch(()=>{});
+   this.monitor?.abort();await this.work;await this.stateQueue;
+   if(this.row)await this.store.release(this.row.connection_id);
+   this.row=null;this.monitor=null;this.monitorState='disconnected';
+   for(const listener of this.listeners)listener({status:'disconnected'});
+  })();
+  this.disconnecting=work;
+  try{await work;}finally{this.disconnecting=null;}
  }
  wake(event){const value={status:'event',event:{event_id:event.event_id,kind:event.kind,resource:event.resource,seq:event.seq}};this.onEvent(value);for(const listener of this.listeners)listener(value);}
  async renewCredential(){
@@ -160,7 +178,13 @@ export class CentralClient {
      failures=0;this.monitorState='running';for(const event of fresh)if(this.row.staged.some(staged=>staged.event_id===event.event_id))this.wake(event);
     }catch(error){
      if(signal.aborted)break;
-     if(['unauthenticated','forbidden','not_found','invalid_state','invalid_cursor','invalid_central_response','invalid_connection_state','unsafe_connection_state','credential_rotation_uncertain'].includes(error.code)){this.monitorState=error.code;for(const listener of this.listeners)listener({status:'unavailable',code:error.code});break;}
+     // Retry only transport/service failures, never a local security failure.
+     const transient=['central_unavailable','database_busy','rate_limited'].includes(error.code);
+     if(!transient||failures>=5){
+      const code=transient?'monitor_retry_exhausted':/^[a-z_]{1,64}$/.test(error.code??'')?error.code:'state_storage_failed';
+      this.monitorState=code;const event={status:'unavailable',code};
+      this.onEvent(event);for(const listener of this.listeners)listener(event);break;
+     }
      this.monitorState='reconnecting';const backoff=Math.min(30000,500*2**Math.min(failures++,6));
      try{await delay(Math.floor(backoff*(0.75+Math.random()*0.5)),undefined,{signal});}catch{break;}
     }
@@ -169,8 +193,8 @@ export class CentralClient {
  }
  async wait(timeout,signal){
   if(!this.row)return {status:'disconnected'};
-  if(this.row.staged.length)return {status:'event',event:{event_id:this.row.staged[0].event_id,kind:this.row.staged[0].kind,resource:this.row.staged[0].resource}};
   if(!['running','reconnecting','backpressure'].includes(this.monitorState))return {status:'unavailable',code:this.monitorState};
+  if(this.row.staged.length)return {status:'event',event:{event_id:this.row.staged[0].event_id,kind:this.row.staged[0].kind,resource:this.row.staged[0].resource}};
   if(signal?.aborted)return {status:'cancelled'};
   return new Promise(resolve=>{let timer;const done=value=>{clearTimeout(timer);this.listeners.delete(done);signal?.removeEventListener('abort',cancel);resolve(value);};const cancel=()=>done({status:'cancelled'});this.listeners.add(done);timer=setTimeout(()=>done({status:'timeout'}),timeout);signal?.addEventListener('abort',cancel,{once:true});});
  }
