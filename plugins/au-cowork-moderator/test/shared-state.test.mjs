@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import {constants as fsConstants} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {fork,execFileSync} from 'node:child_process';
@@ -139,4 +140,31 @@ test('actual unsafe root during disconnect reports unavailable, retains lease, a
   await client.connect({connection_id:ids[0]});assert.equal(client.row.credential,row(ids[0]).credential);
   await client.disconnect();assert.equal(store.leases.size,0);assert.ok(polls<=2);
  }finally{await change(false);await client.disconnect();await fs.rm(temporary,{recursive:true,force:true});}
+});
+
+
+test('a fresh lease winner between stale unlink and recreate is preserved',async t=>{
+ const temporary=await fs.mkdtemp(path.join(tmpdir(),'cowork-recovery-gap-')),root=path.join(temporary,'state');
+ const seed=new ConnectionStore(root),loser=new ConnectionStore(root),winner=new ConnectionStore(root),id=ids[0];
+ const filename=seed.file(id)+'.lease';
+ const originalOpen=fs.open.bind(fs);let exclusiveAttempts=0,winnerLease;
+ try {
+  await seed.save(row(id));await seed.acquire(id);
+  const deadPid=Number(execFileSync(process.execPath,['-e','process.stdout.write(String(process.pid))'],{encoding:'utf8'}));
+  const stale=JSON.parse(await fs.readFile(filename,'utf8'));stale.pid=deadPid;
+  await fs.writeFile(filename,JSON.stringify(stale));
+  t.mock.method(fs,'open',async(target,flags,...args)=>{
+   if(target===filename&&(flags&fsConstants.O_EXCL)&&++exclusiveAttempts===2){
+    // Force the real winner to acquire in the unlink/recreate gap.
+    await winner.acquire(id);winnerLease=await fs.readFile(filename,'utf8');
+   }
+   return originalOpen(target,flags,...args);
+  });
+  await assert.rejects(loser.acquire(id),{code:'connection_in_use'});
+  assert.equal(loser.leases.size,0);assert.equal(winner.leases.size,1);
+  assert.equal(await fs.readFile(filename,'utf8'),winnerLease);
+  await assert.rejects(fs.stat(filename+'.recovery'),{code:'ENOENT'});
+  assert.deepEqual(await winner.load(id),row(id));
+  await winner.release(id);await loser.acquire(id);await loser.release(id);
+ }finally{t.mock.restoreAll();await fs.rm(temporary,{recursive:true,force:true});}
 });

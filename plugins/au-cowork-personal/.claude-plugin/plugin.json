@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin.json",
   "name": "au-cowork-personal",
   "displayName": "AU Cowork Personal",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "Room collaboration through the central Cowork HTTPS service.",
   "author": {
     "name": "Agent University"

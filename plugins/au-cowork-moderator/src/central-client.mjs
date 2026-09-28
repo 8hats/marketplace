@@ -69,7 +69,11 @@ export class ConnectionStore {
     try{if(process.platform==='win32')await windowsPrivateState(filename,false);reader=await fs.open(filename,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);const info=await reader.stat();if(!info.isFile()||info.size>1024||process.platform!=='win32'&&(info.mode&0o077)||(process.getuid&&info.uid!==process.getuid()))throw failure('connection_in_use');previous=JSON.parse(await reader.readFile('utf8'));}catch{throw failure('connection_in_use');}finally{await reader?.close();}
     if(!Number.isInteger(previous.pid)||previous.pid<1)throw failure('connection_in_use');
     try{process.kill(previous.pid,0);throw failure('connection_in_use');}catch(cause){if(cause.code!=='ESRCH')throw failure('connection_in_use');}
-    await fs.unlink(filename);handle=await fs.open(filename,constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY|constants.O_NOFOLLOW,0o600);
+    await fs.unlink(filename);
+    // A fresh contender can create the lease while the stale lease is absent.
+    // Exclusive creation still selects one winner; preserve its lease on conflict.
+    try{handle=await fs.open(filename,constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY|constants.O_NOFOLLOW,0o600);}
+    catch(cause){if(cause.code==='EEXIST')throw failure('connection_in_use');throw cause;}
    }finally{await fs.rmdir(recovery);}
   }
   try{if(process.platform==='win32')await windowsPrivateState(filename,false);await handle.writeFile(JSON.stringify(lease));await handle.sync();}catch(error){await handle.close();await fs.unlink(filename).catch(()=>{});throw error;}finally{await handle.close();}
