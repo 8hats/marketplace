@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {fork} from 'node:child_process';
+import {fork,execFileSync} from 'node:child_process';
 import {once} from 'node:events';
 import {CentralClient,ConnectionStore,failure} from '../src/central-client.mjs';
 import {createRuntime} from '../src/server.mjs';
@@ -108,4 +108,33 @@ test('monitor stops after six consecutive transient failures rather than reconne
  await assert.rejects(()=>client.request('/session'),{code:'monitor_retry_exhausted'});
  assert.equal(requests,6);
  client.row=null;await client.disconnect();
+});
+
+test('actual unsafe root during disconnect reports unavailable, retains lease, and permits repair/reconnect',async()=>{
+ const temporary=await fs.mkdtemp(path.join(tmpdir(),'cowork-repair-')),store=new ConnectionStore(path.join(temporary,'state'));
+ await store.save(row(ids[0]));let polls=0;
+ const change=async unsafe=>{
+  if(process.platform==='win32')execFileSync('icacls.exe',[store.root,...(unsafe?['/grant','*S-1-1-0:(WD)']:['/remove:g','*S-1-1-0'])],{stdio:'ignore'});
+  else await fs.chmod(store.root,unsafe?0o770:0o700);
+ };
+ const client=new CentralClient({store,fetchFn:async(url,options)=>{
+  if(url.endsWith('/session'))return json({});
+  polls++;await new Promise(resolve=>{if(options.signal.aborted)resolve();else options.signal.addEventListener('abort',resolve,{once:true});});throw Error('aborted');
+ }});
+ const handlers=new Map();await createRuntime({client,injectedServer:{registerTool:(name,descriptor,handler)=>handlers.set(name,handler)}});
+ try{
+  await client.connect({connection_id:ids[0]});const waiting=client.wait(60000);
+  await change(true);
+  await assert.rejects(()=>client.disconnect(),{code:'unsafe_state_directory'});
+  assert.deepEqual(await waiting,{status:'unavailable',code:'unsafe_state_directory'});
+  assert.equal(client.row.connection_id,ids[0]);assert.equal(store.leases.has(ids[0]),true);
+  const status=(await handlers.get('get_room_status')({})).structuredContent.data;
+  assert.equal(status.monitoring,'unsafe_state_directory');assert.equal(status.can_read,false);assert.equal(status.can_send,false);
+  const wake=(await handlers.get('wait_for_room_event')({})).structuredContent;
+  assert.equal(wake.status,'unavailable');assert.match(wake.message,/same owning OS user/);
+  await assert.rejects(()=>client.request('/session'),{code:'unsafe_state_directory'});
+  await change(false);await client.disconnect();assert.equal(store.leases.size,0);
+  await client.connect({connection_id:ids[0]});assert.equal(client.row.credential,row(ids[0]).credential);
+  await client.disconnect();assert.equal(store.leases.size,0);assert.ok(polls<=2);
+ }finally{await change(false);await client.disconnect();await fs.rm(temporary,{recursive:true,force:true});}
 });

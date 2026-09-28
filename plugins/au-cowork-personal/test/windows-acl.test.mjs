@@ -88,3 +88,13 @@ test('Windows rejects wrong owner and root/ancestor junctions',windows,async()=>
   }
  });
 });
+
+test('Windows rejects a junction occupying the credential-file path',windows,async()=>{
+ await fixture(async(store,temporary)=>{
+  const target=path.join(temporary,'target');await fs.mkdir(target);
+  await fs.symlink(target,store.file(id),'junction');
+  await assert.rejects(()=>store.load(id),{code:'unsafe_connection_state'});
+  await assert.rejects(()=>store.save(row),{code:'unsafe_connection_state'});
+  assert.deepEqual(await fs.readdir(target),[]);
+ });
+});

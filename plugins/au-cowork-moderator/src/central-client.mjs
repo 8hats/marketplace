@@ -140,15 +140,20 @@ export class CentralClient {
   const work=(async()=>{
    // A shutdown during invitation exchange must also release the new lease.
    await this.transition?.catch(()=>{});
-   this.monitor?.abort();await this.work;await this.stateQueue;
+   this.monitor?.abort();this.monitorState='disconnecting';await this.work;await this.stateQueue;
    if(this.row)await this.store.release(this.row.connection_id);
    this.row=null;this.monitor=null;this.monitorState='disconnected';
    for(const listener of this.listeners)listener({status:'disconnected'});
   })();
   this.disconnecting=work;
-  try{await work;}finally{this.disconnecting=null;}
+  try{await work;}catch(error){this.stopMonitoring(error.code);throw error;}finally{this.disconnecting=null;}
  }
  wake(event){const value={status:'event',event:{event_id:event.event_id,kind:event.kind,resource:event.resource,seq:event.seq}};this.onEvent(value);for(const listener of this.listeners)listener(value);}
+ stopMonitoring(reason){
+  const code=/^[a-z_]{1,64}$/.test(reason??'')?reason:'state_storage_failed';
+  this.monitorState=code;const event={status:'unavailable',code};
+  this.onEvent(event);for(const listener of this.listeners)listener(event);
+ }
  async renewCredential(){
   if(this.row.rotation_pending)throw failure('credential_rotation_uncertain');
   const expires=Date.parse(this.row.expires_at);if(!Number.isFinite(expires))throw failure('invalid_connection_state');
@@ -181,9 +186,7 @@ export class CentralClient {
      // Retry only transport/service failures, never a local security failure.
      const transient=['central_unavailable','database_busy','rate_limited'].includes(error.code);
      if(!transient||failures>=5){
-      const code=transient?'monitor_retry_exhausted':/^[a-z_]{1,64}$/.test(error.code??'')?error.code:'state_storage_failed';
-      this.monitorState=code;const event={status:'unavailable',code};
-      this.onEvent(event);for(const listener of this.listeners)listener(event);break;
+      this.stopMonitoring(transient?'monitor_retry_exhausted':error.code);break;
      }
      this.monitorState='reconnecting';const backoff=Math.min(30000,500*2**Math.min(failures++,6));
      try{await delay(Math.floor(backoff*(0.75+Math.random()*0.5)),undefined,{signal});}catch{break;}
