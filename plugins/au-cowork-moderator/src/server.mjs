@@ -9,7 +9,7 @@ import {zodToJsonSchema} from 'zod-to-json-schema';
 import {CentralClient,failure} from './central-client.mjs';
 import {centralTools} from './central-tools.mjs';
 
-export const VERSION='2.0.2';
+export const VERSION='2.0.3';
 const encode=data=>({content:[{type:'text',text:JSON.stringify(data)}],structuredContent:data});
 const instructions='Connect with an HTTPS agent invitation URL or a saved connection_id. Credentials stay in private local storage. Read ac_messages and ac_files after connecting. wait_for_room_event waits without consuming mail and supports cancellation. Room commands use current inherited permissions. Review and result approval still require the human owner.';
 const messages={
