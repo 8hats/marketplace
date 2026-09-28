@@ -1,3 +1,10 @@
+## 2.0.1
+
+- Permit directory-only Windows read/traverse ACEs while preserving private credential files and SID-based checks.
+- Stop monitoring on storage/security failures and after six consecutive service failures, with actionable recovery messages.
+- Guard connect/shutdown transitions and verify shared-root, distinct-identity leases across real processes.
+- Preserve existing connections and ACLs; document same-user harness sharing and Windows recovery.
+
 ## 2.0.0 — central HTTPS Moderator
 
 - Replace daemon transport and supplied SDK inputs with Owner-issued HTTPS invitations and private scoped credentials.

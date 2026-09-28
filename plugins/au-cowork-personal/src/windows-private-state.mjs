@@ -42,7 +42,14 @@ try {
  $ownerInherited=$false
  foreach($rule in $acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])) {
   if($rule.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow) {
-   if($trusted -notcontains $rule.IdentityReference.Value) { throw 'unsafe' }
+   if($trusted -notcontains $rule.IdentityReference.Value) {
+    # Directory listing/traversal is not credential access. ObjectInherit would
+    # copy the ACE onto newly created credential/temp/lease files, even when
+    # the ACE is explicit or inherit-only. Never trust a group by its name.
+    $readOnly=[int]([Security.AccessControl.FileSystemRights]::ReadAndExecute -bor [Security.AccessControl.FileSystemRights]::Synchronize)
+    $fileInheritance=($rule.InheritanceFlags -band [Security.AccessControl.InheritanceFlags]::ObjectInherit) -ne 0
+    if(-not $inputData.directory -or $fileInheritance -or ([int]$rule.FileSystemRights -band (-bnot $readOnly)) -ne 0) { throw 'unsafe' }
+   }
    if($rule.IdentityReference.Value -eq $user.Value -and ($rule.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly) -eq 0 -and ([int]$rule.FileSystemRights -band 2032127) -eq 2032127) {
     $ownerAllowed=$true
     if(([int]$rule.InheritanceFlags -band 3) -eq 3 -and $rule.PropagationFlags -eq [Security.AccessControl.PropagationFlags]::None) { $ownerInherited=$true }
@@ -57,7 +64,7 @@ try {
 export async function windowsPrivateState(target,directory){
  const executable=path.join(process.env.SystemRoot??'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
  await new Promise((resolve,reject)=>{
-  const fail=()=>reject(Object.assign(Error('unsafe_state_directory'),{code:'unsafe_state_directory'}));
+  const fail=()=>reject(Object.assign(Error(directory?'unsafe_state_directory':'unsafe_connection_state'),{code:directory?'unsafe_state_directory':'unsafe_connection_state'}));
   const child=spawn(executable,['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{stdio:['pipe','pipe','ignore'],windowsHide:true});
   let output='';const timer=setTimeout(()=>{child.kill();fail();},10000);
   child.stdout.on('data',chunk=>{output+=chunk;if(output.length>128){child.kill();fail();}});

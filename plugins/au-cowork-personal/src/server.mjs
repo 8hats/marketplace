@@ -9,7 +9,7 @@ import {zodToJsonSchema} from 'zod-to-json-schema';
 import {CentralClient,failure} from './central-client.mjs';
 import {centralTools} from './central-tools.mjs';
 
-export const VERSION='2.0.0';
+export const VERSION='2.0.1';
 const encode=data=>({content:[{type:'text',text:JSON.stringify(data)}],structuredContent:data});
 const instructions='Connect with an HTTPS agent invitation URL or a saved connection_id. Credentials stay in private local storage. Read ac_messages and ac_files after connecting. wait_for_room_event waits without consuming mail and supports cancellation. Room commands use current inherited permissions. Review and result approval still require the human owner.';
 const messages={
@@ -21,7 +21,12 @@ const messages={
  credential_rotation_uncertain:'Credential renewal could not be confirmed. Do not retry rotation; ask the inviting person to remove this agent and issue a new invitation.',
  unauthenticated:'The credential expired or was revoked. Ask the inviting person to remove this agent and issue a new invitation.',
  central_unavailable:'The central service is unavailable. Retry reads; inspect a mutation outcome before repeating it.',
- connection_in_use:'This connection is already open in another process. Disconnect that process first.',
+ connection_in_use:'This identity is already open in another process. For concurrent agents use separate invitations and connection_ids in the same AC_COWORK_HOME; disconnect the original process before handing off its identity.',
+ connection_selection_required:'Several identities are saved for this room. Use your own connection_id from list_rooms; do not take another agent identity.',
+ unsafe_state_directory:'State directory permissions, ownership or path are unsafe. Use the same owning OS user for each MCP server. Windows allows directory-only read/traverse access, but no foreign write or file-inheriting grants. Inspect ACLs and reparse points; see docs/shared-state.md. Preserve existing state; do not grant sandbox groups credential access. After repair disconnect and reconnect your connection_id.',
+ unsafe_connection_state:'A credential file is not private or is unsafe. Stop using this connection and inspect its ACL/owner/path; do not export its contents. If another principal could read it, ask the inviter to revoke this agent and issue a new invitation after secure storage is restored. See docs/shared-state.md.',
+ state_storage_failed:'Local state could not be saved. Check disk space and owning-user access. After repair disconnect and reconnect your connection_id; do not delete state or replay an uncertain mutation.',
+ monitor_retry_exhausted:'Monitoring stopped after six consecutive service failures. Check central connectivity, then disconnect and reconnect your connection_id. Saved events and mutation keys are retained.',
  result_visibility_changed:'Current room visibility differs from the saved result. Inspect current resources; do not repeat the mutation.',
 };
 export async function createRuntime({client,injectedServer,profile='personal'}={}){
@@ -45,8 +50,8 @@ export async function createRuntime({client,injectedServer,profile='personal'}={
  register('connect_to_room','Exchange an HTTPS invite once, or reconnect a saved connection_id; Personal also supports a unique room name.',connectSchema,async input=>ok(await client.connect(input)));
  register('disconnect_from_room','Disconnect while retaining the credential and durable inbox.',z.object({}).strict(),async()=>{const room=client.publicRow();await client.disconnect();return ok({...(room?{room_name:room.room_name}:{}),status:'disconnected'});});
  register('list_rooms','List locally saved central room connections.',z.object({}).strict(),async()=>ok({rooms:(await client.store.list()).map(row=>client.publicRow(row))}));
- register('get_room_status','Check central connectivity, authorization and monitor health.',z.object({}).strict(),async()=>{if(!client.row)throw failure('not_connected');const status=await client.request('/session');return ok({...client.publicRow(),can_send:true,can_read:true,monitoring:client.monitorState,room:status.room,capabilities:status.capabilities});});
- register('wait_for_room_event','Wait without consuming mail; sending remains available while waiting.',z.object({timeout_ms:z.number().int().min(1000).max(50000).default(50000)}).strict(),(input,signal)=>client.wait(input.timeout_ms,signal),true);
+ register('get_room_status','Check central connectivity, authorization and monitor health.',z.object({}).strict(),async()=>{if(!client.row)throw failure('not_connected');if(!['running','reconnecting','backpressure'].includes(client.monitorState))return ok({...client.publicRow(),can_send:false,can_read:false,monitoring:client.monitorState,error:{code:client.monitorState,message:messages[client.monitorState]??client.monitorState,retryable:false}});const status=await client.request('/session');return ok({...client.publicRow(),can_send:true,can_read:true,monitoring:client.monitorState,room:status.room,capabilities:status.capabilities});});
+ register('wait_for_room_event','Wait without consuming mail; sending remains available while waiting.',z.object({timeout_ms:z.number().int().min(1000).max(50000).default(50000)}).strict(),async(input,signal)=>{const result=await client.wait(input.timeout_ms,signal);return result.status==='unavailable'?{...result,message:messages[result.code]??result.code}:result;},true);
  for(const tool of centralTools(client,profile))register(tool.name,tool.description,tool.inputSchema,tool.execute);
  server.server?.setRequestHandler(ListToolsRequestSchema,async()=>({tools:descriptors.map(tool=>({name:tool.name,description:tool.description,inputSchema:{...zodToJsonSchema(tool.inputSchema,{$refStrategy:'none'}),type:'object'}}))}));
  return {server,client,shutdown:()=>client.disconnect()};
