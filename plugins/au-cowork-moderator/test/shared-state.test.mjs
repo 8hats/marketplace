@@ -55,7 +55,7 @@ test('bind transition excludes identity switching; shutdown waits and releases i
  const leases=new Set();let polls=0;
  const client=new CentralClient({store:{init:async()=>{},acquire:async id=>leases.add(id),release:async id=>leases.delete(id),load:async id=>row(id)},fetchFn:async(url,options)=>{
   if(url.endsWith('/session')){entered();await gate;return json({});}
-  polls++;await new Promise(resolve=>options.signal.addEventListener('abort',resolve,{once:true}));throw Error('aborted');
+  polls++;await new Promise(resolve=>{if(options.signal.aborted)resolve();else options.signal.addEventListener('abort',resolve,{once:true});});throw Error('aborted');
  }});
  const binding=client.connect({connection_id:ids[0]});await started;
  await assert.rejects(()=>client.connect({connection_id:ids[1]}),{code:'session_already_bound'});
@@ -73,7 +73,7 @@ test('storage failure stops once, wakes waiters, retains cursor and reconnects a
  const client=new CentralClient({store,onEvent:value=>wakes.push(value),fetchFn:async(url,options)=>{
   if(url.endsWith('/session'))return json({});
   polls++;if(polls<=2)return json({events:[],cursor:1});
-  await new Promise(resolve=>options.signal.addEventListener('abort',resolve,{once:true}));throw Error('aborted');
+  await new Promise(resolve=>{if(options.signal.aborted)resolve();else options.signal.addEventListener('abort',resolve,{once:true});});throw Error('aborted');
  }});
  try{
   await client.connect({connection_id:ids[0]});
@@ -83,7 +83,9 @@ test('storage failure stops once, wakes waiters, retains cursor and reconnects a
   assert.equal(polls,1);assert.equal((await store.load(ids[0])).cursor,0);
   await client.disconnect();failSave=false;await client.connect({connection_id:ids[0]});
   // Await the durable update without racing monitor scheduling.
-  while(client.row.cursor!==1)await new Promise(resolve=>setImmediate(resolve));
+  const deadline=Date.now()+30000;
+  while(client.row.cursor!==1&&Date.now()<deadline&&['running','reconnecting'].includes(client.monitorState))await new Promise(resolve=>setTimeout(resolve,25));
+  assert.equal(client.row.cursor,1,'durable cursor did not advance: '+client.monitorState);
   assert.equal((await store.load(ids[0])).cursor,1);
  }finally{await client.disconnect();await fs.rm(temporary,{recursive:true,force:true});}
 });
