@@ -1,4 +1,4 @@
-import {spawn} from 'node:child_process';
+import {inspectWindowsState} from './windows-inspection.mjs';
 import path from 'node:path';
 
 const script=String.raw`
@@ -58,18 +58,13 @@ try {
  }
  if(-not $ownerAllowed -or ($inputData.directory -and -not $ownerInherited)) { throw 'unsafe' }
  [Console]::Out.Write('private')
-} catch { [Console]::Out.Write('unsafe'); exit 1 }
+} catch {
+ if($_.Exception.Message -eq 'unsafe') { [Console]::Out.Write('unsafe'); exit 1 }
+ [Console]::Out.Write('inspection_failed'); exit 2
+}
 `;
 
 export async function windowsPrivateState(target,directory){
  const executable=path.join(process.env.SystemRoot??'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
- await new Promise((resolve,reject)=>{
-  const fail=()=>reject(Object.assign(Error(directory?'unsafe_state_directory':'unsafe_connection_state'),{code:directory?'unsafe_state_directory':'unsafe_connection_state'}));
-  const child=spawn(executable,['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{stdio:['pipe','pipe','ignore'],windowsHide:true});
-  let output='';const timer=setTimeout(()=>{child.kill();fail();},10000);
-  child.stdout.on('data',chunk=>{output+=chunk;if(output.length>128){child.kill();fail();}});
-  child.once('error',()=>{clearTimeout(timer);fail();});child.stdin.once('error',()=>{});
-  child.once('exit',code=>{clearTimeout(timer);if(code===0&&output==='private')resolve();else fail();});
-  child.stdin.end(JSON.stringify({path:target,directory}));
- });
+ await inspectWindowsState(executable,script,target,directory);
 }

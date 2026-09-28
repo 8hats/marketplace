@@ -114,3 +114,7 @@ OpenAI documents [Windows sandbox modes](https://learn.chatgpt.com/docs/windows/
 elevated mode uses dedicated sandbox users; unelevated mode uses a restricted
 current-user token. That explains why an account boundary can differ, but does
 not prove which component added any particular ACE on the reported machine.
+
+### Windows inspection failures
+
+`state_inspection_failed` means the security inspection could not finish, not that an unsafe ACL was proven. PowerShell startup and inspection have a single 30-second deadline; no automatic retry or credential access follows a failed inspection. Check that Windows PowerShell starts under the owning OS user, then disconnect and reconnect. Do not loosen ACLs to address this error. Actual rejected permissions still report `unsafe_state_directory` or `unsafe_connection_state`.
