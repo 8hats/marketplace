@@ -97,7 +97,7 @@ test('permanent storage errors are actionable through MCP and never retryable',a
  try{
   const result=await handlers.get('connect_to_room')({connection_id:ids[0]});
   assert.equal(result.structuredContent.error.code,'unsafe_state_directory');
-  assert.equal(result.structuredContent.error.retryable,false);assert.match(result.structuredContent.error.message,/same owning OS user/);
+  assert.equal(result.structuredContent.error.retryable,false);assert.match(result.structuredContent.error.message,/absolute directory path/);
  }finally{await runtime.shutdown();}
 });
 
@@ -116,9 +116,10 @@ test('monitor stops after six consecutive transient failures rather than reconne
 test('actual unsafe root during disconnect reports unavailable, retains lease, and permits repair/reconnect',async()=>{
  const temporary=await fs.mkdtemp(path.join(tmpdir(),'cowork-repair-')),store=new ConnectionStore(path.join(temporary,'state'));
  await store.save(row(ids[0]));let polls=0;
+ const moved=store.root+'.saved';
  const change=async unsafe=>{
-  if(process.platform==='win32')execFileSync('icacls.exe',[store.root,...(unsafe?['/grant','*S-1-1-0:(WD)']:['/remove:g','*S-1-1-0'])],{stdio:'ignore'});
-  else await fs.chmod(store.root,unsafe?0o770:0o700);
+  if(unsafe){await fs.rename(store.root,moved);await fs.writeFile(store.root,'invalid directory fixture');}
+  else if(await fs.stat(moved).then(()=>true,()=>false)){await fs.unlink(store.root);await fs.rename(moved,store.root);}
  };
  const client=new CentralClient({store,fetchFn:async(url,options)=>{
   if(url.endsWith('/session'))return json({});
@@ -134,7 +135,7 @@ test('actual unsafe root during disconnect reports unavailable, retains lease, a
   const status=(await handlers.get('get_room_status')({})).structuredContent.data;
   assert.equal(status.monitoring,'unsafe_state_directory');assert.equal(status.can_read,false);assert.equal(status.can_send,false);
   const wake=(await handlers.get('wait_for_room_event')({})).structuredContent;
-  assert.equal(wake.status,'unavailable');assert.match(wake.message,/same owning OS user/);
+  assert.equal(wake.status,'unavailable');assert.match(wake.message,/absolute directory path/);
   await assert.rejects(()=>client.request('/session'),{code:'unsafe_state_directory'});
   await change(false);await client.disconnect();assert.equal(store.leases.size,0);
   await client.connect({connection_id:ids[0]});assert.equal(client.row.credential,row(ids[0]).credential);
