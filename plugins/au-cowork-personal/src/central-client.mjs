@@ -4,7 +4,6 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {homedir} from 'node:os';
 import {setTimeout as delay} from 'node:timers/promises';
-import {windowsPrivateState} from './windows-private-state.mjs';
 
 export const failure=code=>Object.assign(new Error(code),{code});
 const uuid=/^[a-f0-9-]{36}$/;
@@ -23,24 +22,26 @@ export function invitation(value,configured){
 export class ConnectionStore {
  constructor(root=process.env.AC_COWORK_HOME??path.join(homedir(),'.local','share','au-cowork-central')){if(!path.isAbsolute(root))throw failure('unsafe_state_directory');this.root=root;this.leases=new Map();}
  async init(){
-  if(process.platform==='win32'){await windowsPrivateState(this.root,true);return;}
-  await fs.mkdir(this.root,{recursive:true,mode:0o700});
-  let ancestor=path.parse(this.root).root;
-  for(const segment of this.root.slice(ancestor.length).split(path.sep).filter(Boolean)){
-   ancestor=path.join(ancestor,segment);const info=await fs.lstat(ancestor);
-   const trustedTemporary=(info.mode&0o1000)!==0&&info.uid===0;
-   if(!info.isDirectory()||info.isSymbolicLink()||info.uid!==0&&info.uid!==process.getuid?.()||(info.mode&0o022)&&!trustedTemporary)throw failure('unsafe_state_directory');
-  }
-  const state=await fs.lstat(this.root);
-  if(!state.isDirectory()||state.isSymbolicLink()||(process.getuid&&state.uid!==process.getuid())||(state.mode&0o077))throw failure('unsafe_state_directory');
+  // Isolation and access permissions are managed by the operator.
+  // Validate existing components before mkdir so a link cannot redirect creation.
+  const check=async()=>{
+   let ancestor=path.parse(this.root).root;
+   for(const segment of this.root.slice(ancestor.length).split(path.sep).filter(Boolean)){
+    ancestor=path.join(ancestor,segment);let info;
+    try{info=await fs.lstat(ancestor);}catch(error){if(error.code==='ENOENT')return;throw error;}
+    if(!info.isDirectory()||info.isSymbolicLink())throw failure('unsafe_state_directory');
+   }
+  };
+  await check();await fs.mkdir(this.root,{recursive:true,mode:0o700});await check();
  }
+ async regularFile(filename,code){const info=await fs.lstat(filename);if(!info.isFile()||info.isSymbolicLink())throw failure(code);}
  file(id){if(!uuid.test(id))throw failure('connection_not_found');return path.join(this.root,id+'.json');}
  async load(id){
   await this.init();let handle;
   try{
-   if(process.platform==='win32'){await fs.lstat(this.file(id));await windowsPrivateState(this.file(id),false);}
+   await this.regularFile(this.file(id),'unsafe_connection_state');
    handle=await fs.open(this.file(id),constants.O_RDONLY|constants.O_NOFOLLOW);
-   const info=await handle.stat();if(!info.isFile()||process.platform!=='win32'&&(info.mode&0o077)||info.size>8*1024*1024||(process.getuid&&info.uid!==process.getuid()))throw failure('unsafe_connection_state');
+   const info=await handle.stat();if(!info.isFile()||info.size>8*1024*1024)throw failure('unsafe_connection_state');
    const row=JSON.parse(await handle.readFile('utf8'));
    if(row.version!==1||row.connection_id!==id||!secret.test(row.credential)||!Array.isArray(row.staged)||!Number.isSafeInteger(row.cursor)||row.cursor<0||!Array.isArray(row.consumed_files))throw failure('invalid_connection_state');
    centralOrigin(row.origin);return row;
@@ -48,10 +49,10 @@ export class ConnectionStore {
  }
  async save(row){
   await this.init();const target=this.file(row.connection_id),temporary=target+'.'+randomUUID()+'.tmp';
-  // Do not silently replace a credential whose protection changed while bound.
+  // Validate an existing record before replacing it.
   try{await this.load(row.connection_id);}catch(error){if(error.code!=='connection_not_found')throw error;}
   const handle=await fs.open(temporary,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);
-  try{if(process.platform==='win32')await windowsPrivateState(temporary,false);await handle.writeFile(JSON.stringify(row));await handle.sync();}catch(error){await handle.close();await fs.unlink(temporary).catch(()=>{});throw error;}finally{await handle.close();}
+  try{await handle.writeFile(JSON.stringify(row));await handle.sync();}catch(error){await handle.close();await fs.unlink(temporary).catch(()=>{});throw error;}finally{await handle.close();}
   try{await fs.rename(temporary,target);if(process.platform!=='win32'){const directory=await fs.open(this.root,constants.O_RDONLY);try{await directory.sync();}finally{await directory.close();}}}
   catch(error){await fs.unlink(temporary).catch(()=>{});throw error;}
  }
@@ -66,7 +67,7 @@ export class ConnectionStore {
    try{await fs.mkdir(recovery,{mode:0o700});}catch{throw failure('connection_in_use');}
    try{
     let previous,reader;
-    try{if(process.platform==='win32')await windowsPrivateState(filename,false);reader=await fs.open(filename,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);const info=await reader.stat();if(!info.isFile()||info.size>1024||process.platform!=='win32'&&(info.mode&0o077)||(process.getuid&&info.uid!==process.getuid()))throw failure('connection_in_use');previous=JSON.parse(await reader.readFile('utf8'));}catch{throw failure('connection_in_use');}finally{await reader?.close();}
+    try{await this.regularFile(filename,'connection_in_use');reader=await fs.open(filename,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);const info=await reader.stat();if(!info.isFile()||info.size>1024)throw failure('connection_in_use');previous=JSON.parse(await reader.readFile('utf8'));}catch{throw failure('connection_in_use');}finally{await reader?.close();}
     if(!Number.isInteger(previous.pid)||previous.pid<1)throw failure('connection_in_use');
     try{process.kill(previous.pid,0);throw failure('connection_in_use');}catch(cause){if(cause.code!=='ESRCH')throw failure('connection_in_use');}
     await fs.unlink(filename);
@@ -76,16 +77,16 @@ export class ConnectionStore {
     catch(cause){if(cause.code==='EEXIST')throw failure('connection_in_use');throw cause;}
    }finally{await fs.rmdir(recovery);}
   }
-  try{if(process.platform==='win32')await windowsPrivateState(filename,false);await handle.writeFile(JSON.stringify(lease));await handle.sync();}catch(error){await handle.close();await fs.unlink(filename).catch(()=>{});throw error;}finally{await handle.close();}
+  try{await handle.writeFile(JSON.stringify(lease));await handle.sync();}catch(error){await handle.close();await fs.unlink(filename).catch(()=>{});throw error;}finally{await handle.close();}
   this.leases.set(id,lease.nonce);
  }
  async release(id){
   const nonce=this.leases.get(id);if(!nonce)return;
   const filename=this.file(id)+'.lease';
-  await this.init();if(process.platform==='win32')await windowsPrivateState(filename,false);
+  await this.init();await this.regularFile(filename,'connection_lease_changed');
   const reader=await fs.open(filename,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
   let lease;
-  try{const info=await reader.stat();if(!info.isFile()||info.size>1024||process.platform!=='win32'&&(info.mode&0o077)||(process.getuid&&info.uid!==process.getuid()))throw failure('connection_lease_changed');lease=JSON.parse(await reader.readFile('utf8'));}finally{await reader.close();}
+  try{const info=await reader.stat();if(!info.isFile()||info.size>1024)throw failure('connection_lease_changed');lease=JSON.parse(await reader.readFile('utf8'));}finally{await reader.close();}
   if(lease.nonce!==nonce)throw failure('connection_lease_changed');
   await fs.unlink(filename);this.leases.delete(id);
  }

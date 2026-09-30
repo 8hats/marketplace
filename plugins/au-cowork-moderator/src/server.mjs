@@ -9,9 +9,9 @@ import {zodToJsonSchema} from 'zod-to-json-schema';
 import {CentralClient,failure} from './central-client.mjs';
 import {centralTools} from './central-tools.mjs';
 
-export const VERSION='2.0.3';
+export const VERSION='2.0.4';
 const encode=data=>({content:[{type:'text',text:JSON.stringify(data)}],structuredContent:data});
-const instructions='Connect with an HTTPS agent invitation URL or a saved connection_id. Credentials stay in private local storage. Read ac_messages and ac_files after connecting. wait_for_room_event waits without consuming mail and supports cancellation. Room commands use current inherited permissions. Review and result approval still require the human owner.';
+const instructions='Connect with an HTTPS agent invitation URL or a saved connection_id. Credentials stay in local storage; the user manages filesystem isolation. Read ac_messages and ac_files after connecting. wait_for_room_event waits without consuming mail and supports cancellation. Room commands use current inherited permissions. Review and result approval still require the human owner.';
 const messages={
  central_configuration_required:'Set AC_COWORK_URL to the central HTTPS origin, or provide an HTTPS invitation URL.',
  legacy_configuration_rejected:'Remove legacy daemon settings and configure AC_COWORK_URL.',
@@ -23,9 +23,8 @@ const messages={
  central_unavailable:'The central service is unavailable. Retry reads; inspect a mutation outcome before repeating it.',
  connection_in_use:'This identity is already open in another process. For concurrent agents use separate invitations and connection_ids in the same AC_COWORK_HOME; disconnect the original process before handing off its identity.',
  connection_selection_required:'Several identities are saved for this room. Use your own connection_id from list_rooms; do not take another agent identity.',
- unsafe_state_directory:'State directory permissions, ownership or path are unsafe. Use the same owning OS user for each MCP server. Windows allows directory-only read/traverse access, but no foreign write or file-inheriting grants. Inspect ACLs and reparse points; see docs/shared-state.md. Preserve existing state; do not grant sandbox groups credential access. After repair disconnect and reconnect your connection_id.',
- unsafe_connection_state:'A credential file is not private or is unsafe. Stop using this connection and inspect its ACL/owner/path; do not export its contents. If another principal could read it, ask the inviter to revoke this agent and issue a new invitation after secure storage is restored. See docs/shared-state.md.',
- state_inspection_failed:'Windows could not complete the private-state security inspection. Access remains blocked. Check that Windows PowerShell can start under the owning OS user, then disconnect and reconnect. Do not change ACLs merely to resolve an inspection failure.',
+ unsafe_state_directory:'State requires an absolute directory path without symlinks or junctions in its components. Preserve existing state, repair the path, then disconnect and reconnect your connection_id.',
+ unsafe_connection_state:'A saved connection path must be a regular file without symlinks or junctions and within the size limit. Preserve state and inspect the path; do not export credential contents.',
  state_storage_failed:'Local state could not be saved. Check disk space and owning-user access. After repair disconnect and reconnect your connection_id; do not delete state or replay an uncertain mutation.',
  monitor_retry_exhausted:'Monitoring stopped after six consecutive service failures. Check central connectivity, then disconnect and reconnect your connection_id. Saved events and mutation keys are retained.',
  result_visibility_changed:'Current room visibility differs from the saved result. Inspect current resources; do not repeat the mutation.',

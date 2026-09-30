@@ -1,5 +1,9 @@
 ## 2.0.1
 
+## 2.0.4
+
+Remove ACL, ownership and permission-mode storage gates. Filesystem isolation is managed by the user; Windows storage no longer launches PowerShell. Keep path, record and lease validation.
+
 - Permit directory-only Windows read/traverse ACEs while preserving private credential files and SID-based checks.
 - Stop monitoring on storage/security failures and after six consecutive service failures, with actionable recovery messages.
 - Guard connect/shutdown transitions and verify shared-root, distinct-identity leases across real processes.
