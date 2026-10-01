@@ -29,3 +29,9 @@ The monitor renews credentials during the final 24 hours of their 30-day lifetim
 File metadata is paged, with at most 100 records per page. `has_more` indicates further catch-up; call again after consuming listed files. `ac_files({open_wire_id})` returns verified bounded `data_base64`, not a daemon-local path. `ac_commands` retains structured command definitions and an ok/data capability envelope. Central IDs replace native IDs. Once a successful MCP call has completed locally, a later deliberate identical call is a new action; only unresolved HTTP mutations automatically retain their prior idempotency key.
 
 Packaging verification: `node scripts/package-check.mjs` after building. It packs locally, installs in a disposable directory and checks a copied standalone bundle with a real stdio MCP client. It does not publish or contact a room.
+
+Host integrations can import `createRuntime`, `CentralClient` and `ConnectionStore`
+from the standalone bundle. Supply `clientOptions: {origin, store}` and
+`profile: 'moderator'` to isolate each session without changing process environment.
+A supplied `client` takes precedence; `injectedServer` owns the transport. Await
+`shutdown()` before releasing the Host session. Never publish `client.row`.
