@@ -228,7 +228,7 @@ jobs:
           cd plugins/au-cowork-personal
           npm test
           npm run build
-          git diff --exit-code -- dist
+          git diff --exit-code -- dist harness/dist
 
       - name: Moderator plugin install, test, and reproducible bundle
         run: |

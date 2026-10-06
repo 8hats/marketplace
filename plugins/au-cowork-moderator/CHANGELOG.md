@@ -1,3 +1,11 @@
+## 2.0.5 — durable room watch
+
+- Persist watch intent on connect; automatically restore one watched connection across runtime shutdown/restart. Explicit disconnect keeps credentials and inbox but disables automatic restoration.
+- Require explicit `AC_COWORK_CONNECTION_ID` selection for multiple watched identities; never automatically adopt old or unwatched records or bypass lease/rotation checks.
+- Start monitor recovery during central outages without a startup session check; wake durable backlog without consuming mail and expose startup restoration failures through room status.
+- Retry transient transport/service failures indefinitely with capped exponential jitter, including response-body stream failures; retain immediate stops for storage, authorization and security failures. Isolate Host wake callback errors and preserve already-connected supplied clients.
+- Add durable-watch and offline crash/restore regression coverage; document MCP logging hints and the shared Host wake integration. Preserve the Moderator profile and baseline tool schemas.
+
 ## 2.0.1
 
 ## 2.0.4

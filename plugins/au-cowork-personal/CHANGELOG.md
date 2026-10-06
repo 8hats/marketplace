@@ -1,3 +1,12 @@
+## 2.0.5 — durable room watch
+
+- Persist watch intent on connect; automatically restore one watched connection across runtime shutdown/restart. Explicit disconnect keeps credentials and inbox but disables automatic restoration.
+- Require explicit `AC_COWORK_CONNECTION_ID` selection for multiple watched identities; never automatically adopt old or unwatched records or bypass lease/rotation checks.
+- Start monitor recovery during central outages without a startup session check; wake durable backlog without consuming mail and expose startup restoration failures through room status.
+- Retry transient transport/service failures indefinitely with capped exponential jitter, including response-body stream failures; retain immediate stops for storage, authorization and security failures. Isolate Host wake callback errors and preserve already-connected supplied clients.
+- Add a self-contained 8Hats/DeepSeek Host bundle with exact-chat isolation, coalesced agent wake notices, own-message suppression, bounded queues and secret-free diagnostics. Installation failures remain visible; teardown drains in-flight mutations before releasing the binding.
+- Add durable-watch, killed-process recovery and Host adapter regression coverage; update shared-state/Host integration guidance.
+
 ## 2.0.1
 
 ## 2.0.4

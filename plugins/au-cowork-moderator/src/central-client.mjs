@@ -43,7 +43,7 @@ export class ConnectionStore {
    handle=await fs.open(this.file(id),constants.O_RDONLY|constants.O_NOFOLLOW);
    const info=await handle.stat();if(!info.isFile()||info.size>8*1024*1024)throw failure('unsafe_connection_state');
    const row=JSON.parse(await handle.readFile('utf8'));
-   if(row.version!==1||row.connection_id!==id||!secret.test(row.credential)||!Array.isArray(row.staged)||!Number.isSafeInteger(row.cursor)||row.cursor<0||!Array.isArray(row.consumed_files))throw failure('invalid_connection_state');
+   if(row.version!==1||row.connection_id!==id||!secret.test(row.credential)||!Array.isArray(row.staged)||!Number.isSafeInteger(row.cursor)||row.cursor<0||!Array.isArray(row.consumed_files)||(row.watch_enabled!==undefined&&typeof row.watch_enabled!=='boolean'))throw failure('invalid_connection_state');
    centralOrigin(row.origin);return row;
   }catch(error){if(error.code==='ENOENT')throw failure('connection_not_found');throw error;}finally{await handle?.close();}
  }
@@ -93,11 +93,11 @@ export class ConnectionStore {
 }
 
 export class CentralClient {
- constructor({fetchFn=fetch,store=new ConnectionStore(),origin=process.env.AC_COWORK_URL,onEvent=()=>{}}={}){
+ constructor({fetchFn=fetch,store=new ConnectionStore(),origin=process.env.AC_COWORK_URL,onEvent=()=>{},retryDelayFn=delay}={}){
   const incompatible=['OURS_PORT','OURS_STATE_DIR','OURS_CONFIG','OURS_URL','OURS_TOKEN','OURS_TOKEN_FILE','AU_OURS_URL','AU_OURS_API_TOKEN','AU_OURS_CONFIG','AC_REMOTE_OURS_URL','AC_REMOTE_OURS_TOKEN_FILE','AC_MODERATOR_INPUTS_MODULE'].some(key=>process.env[key]);
   if(incompatible)throw failure('legacy_configuration_rejected');
   try{lstatSync(path.resolve('.au-ours.json'));throw failure('legacy_configuration_rejected');}catch(error){if(error.code!=='ENOENT')throw error;}
-  this.fetchFn=fetchFn;this.store=store;this.origin=origin?centralOrigin(origin):undefined;this.onEvent=onEvent;this.row=null;this.monitor=null;this.work=null;this.listeners=new Set();this.stateQueue=Promise.resolve();this.monitorState='disconnected';this.transition=null;this.disconnecting=null;
+  this.retryDelayFn=retryDelayFn;this.restoreError=null;this.fetchFn=fetchFn;this.store=store;this.origin=origin?centralOrigin(origin):undefined;this.onEvent=onEvent;this.row=null;this.monitor=null;this.work=null;this.listeners=new Set();this.stateQueue=Promise.resolve();this.monitorState='disconnected';this.transition=null;this.disconnecting=null;
  }
  assertHealthy(){if(this.row&&this.monitor&&!['running','reconnecting','backpressure'].includes(this.monitorState))throw failure(this.monitorState);}
  async request(route,{method='GET',body,bytes,headers={},signal,origin=this.row?.origin??this.origin,credential=this.row?.credential,raw=false}={}){
@@ -107,7 +107,9 @@ export class CentralClient {
   try{response=await this.fetchFn(origin+'/api/v1/agent'+route,{method,redirect:'error',signal:combined,headers:{...(credential?{authorization:'Bearer '+credential}:{}),...(body!==undefined?{'content-type':'application/json'}:{}),...headers},...(body!==undefined?{body:JSON.stringify(body)}:bytes!==undefined?{body:bytes}:{})});}
   catch(error){if(signal?.aborted)throw failure('cancelled');throw failure('central_unavailable');}
   const reader=response.body?.getReader(),chunks=[];let size=0;
-  if(reader)try{while(true){const item=await reader.read();if(item.done)break;size+=item.value.byteLength;if(size>4*1024*1024){await reader.cancel();throw failure('response_too_large');}chunks.push(item.value);}}finally{reader.releaseLock();}
+  if(reader)try{while(true){const item=await reader.read();if(item.done)break;size+=item.value.byteLength;if(size>4*1024*1024){await reader.cancel().catch(()=>{});throw failure('response_too_large');}chunks.push(item.value);}}
+  catch(error){if(error.code==='response_too_large')throw error;if(signal?.aborted)throw failure('cancelled');throw failure('central_unavailable');}
+  finally{reader.releaseLock();}
   const buffer=Buffer.concat(chunks);
   if(raw&&response.ok)return {bytes:buffer,headers:response.headers};
   let payload;try{payload=JSON.parse(buffer.toString('utf8'));}catch{throw failure('invalid_central_response');}
@@ -119,45 +121,66 @@ export class CentralClient {
   this.stateQueue=work.catch(()=>{});return work;
  }
  publicRow(row=this.row){return row?{connection_id:row.connection_id,room_name:row.room_name,room_id:row.room_id,as_agent:row.display_name,status:row.connection_id===this.row?.connection_id?'connected':'disconnected',membership_state:'ready',bind_state:row.connection_id===this.row?.connection_id?'bound_here':'unbound'}:null;}
+ async restore({connection_id=process.env.AC_COWORK_CONNECTION_ID}={}){
+  // Never adopt an arbitrary saved identity, or replay an invitation exchange.
+  const watched=(await this.store.list()).filter(row=>row.watch_enabled===true);
+  const selected=connection_id?watched.find(row=>row.connection_id===connection_id):watched.length===1?watched[0]:null;
+  if(connection_id&&!selected)throw failure('connection_not_watched');
+  if(!connection_id&&watched.length>1)throw failure('connection_selection_required');
+  if(!selected)return null;
+  return this.connect({connection_id:selected.connection_id,restoring:true});
+ }
  async connect(input){
   if(this.row||this.transition||this.disconnecting)throw failure('session_already_bound');
   const work=this.bind(input);this.transition=work;
   try{return await work;}finally{if(this.transition===work)this.transition=null;}
  }
- async bind({invite,connection_id,room_name,as_agent}){
+ async bind({invite,connection_id,room_name,as_agent,restoring=false}){
   if([invite,connection_id,room_name].filter(Boolean).length!==1)throw failure('invalid_request');
   await this.store.init();
   if(invite){
    const parsed=invitation(invite,this.origin),accepted=await this.request('/exchange',{method:'POST',body:{token:parsed.token,display_name:as_agent??'Cowork agent'},origin:parsed.origin,credential:undefined});
    if(!secret.test(accepted.credential)||typeof accepted.room_id!=='string'||typeof accepted.agent_id!=='string')throw failure('invalid_central_response');
-   const row={version:1,connection_id:randomUUID(),origin:parsed.origin,...accepted,cursor:0,staged:[],consumed_files:[]};
+   const row={version:1,connection_id:randomUUID(),origin:parsed.origin,...accepted,cursor:0,staged:[],consumed_files:[],watch_enabled:true};
    await this.store.acquire(row.connection_id);
    try{await this.store.save(row);this.row=row;}catch(error){await this.store.release(row.connection_id);throw failure('credential_storage_failed');}
   }else{
    if(room_name){const rows=(await this.store.list()).filter(row=>row.room_name===room_name);if(rows.length!==1)throw failure(rows.length?'connection_selection_required':'connection_not_found');connection_id=rows[0].connection_id;}
    await this.store.acquire(connection_id);
-   try{const row=await this.store.load(connection_id);if(row.rotation_pending)throw failure('credential_rotation_uncertain');if(this.origin&&row.origin!==this.origin)throw failure('central_origin_mismatch');await this.request('/session',{origin:row.origin,credential:row.credential});this.row=row;}catch(error){await this.store.release(connection_id);throw error;}
+   try{const row=await this.store.load(connection_id);if(row.rotation_pending)throw failure('credential_rotation_uncertain');if(this.origin&&row.origin!==this.origin)throw failure('central_origin_mismatch');if(!restoring)await this.request('/session',{origin:row.origin,credential:row.credential});if(row.watch_enabled!==true){row.watch_enabled=true;await this.store.save(row);}this.row=row;}catch(error){await this.store.release(connection_id);throw error;}
   }
-  this.startMonitor();return {...this.publicRow(),monitoring_instructions:'Read ac_messages and ac_files. wait_for_room_event waits without consuming mail.'};
+  this.restoreError=null;this.startMonitor();
+  // Catch-up already staged on disk must wake the host again after restart.
+  for(const event of this.row.staged)this.wake(event);
+  return {...this.publicRow(),monitoring_instructions:'Watching is durable across process restarts with the same state directory. Read ac_messages and ac_files; wait_for_room_event does not consume mail. Explicit disconnect stops watching.'};
  }
- async disconnect(){
+ async disconnect({preserveWatch=false}={}){
   if(this.disconnecting)return this.disconnecting;
   const work=(async()=>{
    // A shutdown during invitation exchange must also release the new lease.
    await this.transition?.catch(()=>{});
    this.monitor?.abort();this.monitorState='disconnecting';await this.work;await this.stateQueue;
-   if(this.row)await this.store.release(this.row.connection_id);
+   if(this.row){
+     if(!preserveWatch)await this.update(row=>{row.watch_enabled=false;});
+     await this.store.release(this.row.connection_id);
+    }
    this.row=null;this.monitor=null;this.monitorState='disconnected';
    for(const listener of this.listeners)listener({status:'disconnected'});
   })();
   this.disconnecting=work;
   try{await work;}catch(error){this.stopMonitoring(error.code);throw error;}finally{this.disconnecting=null;}
  }
- wake(event){const value={status:'event',event:{event_id:event.event_id,kind:event.kind,resource:event.resource,seq:event.seq}};this.onEvent(value);for(const listener of this.listeners)listener(value);}
+ notify(value){
+  // A host notification is a hint, not consumption. Host failures must not stop
+  // durable polling or get misclassified as storage/security failures.
+  try{Promise.resolve(this.onEvent(value)).catch(()=>{});}catch{}
+  for(const listener of this.listeners){try{listener(value);}catch{}}
+ }
+ wake(event){this.notify({status:'event',event:{event_id:event.event_id,kind:event.kind,resource:event.resource,seq:event.seq}});}
  stopMonitoring(reason){
   const code=/^[a-z_]{1,64}$/.test(reason??'')?reason:'state_storage_failed';
   this.monitorState=code;const event={status:'unavailable',code};
-  this.onEvent(event);for(const listener of this.listeners)listener(event);
+  this.notify(event);
  }
  async renewCredential(){
   if(this.row.rotation_pending)throw failure('credential_rotation_uncertain');
@@ -190,17 +213,18 @@ export class CentralClient {
      if(signal.aborted)break;
      // Retry only transport/service failures, never a local security failure.
      const transient=['central_unavailable','database_busy','rate_limited'].includes(error.code);
-     if(!transient||failures>=5){
-      this.stopMonitoring(transient?'monitor_retry_exhausted':error.code);break;
+     if(!transient){
+      this.stopMonitoring(error.code);break;
      }
-     this.monitorState='reconnecting';const backoff=Math.min(30000,500*2**Math.min(failures++,6));
-     try{await delay(Math.floor(backoff*(0.75+Math.random()*0.5)),undefined,{signal});}catch{break;}
+     if(this.monitorState!=='reconnecting')this.notify({status:'reconnecting',code:error.code});
+      this.monitorState='reconnecting';const backoff=Math.min(30000,500*2**Math.min(failures,6));failures=Math.min(failures+1,6);
+     try{await this.retryDelayFn(Math.min(30000,Math.floor(backoff*(0.75+Math.random()*0.5))),undefined,{signal});}catch{break;}
     }
    }
   })();
  }
  async wait(timeout,signal){
-  if(!this.row)return {status:'disconnected'};
+  if(!this.row)return this.restoreError?{status:'unavailable',code:this.restoreError.code??'state_storage_failed'}:{status:'disconnected'};
   if(!['running','reconnecting','backpressure'].includes(this.monitorState))return {status:'unavailable',code:this.monitorState};
   if(this.row.staged.length)return {status:'event',event:{event_id:this.row.staged[0].event_id,kind:this.row.staged[0].kind,resource:this.row.staged[0].resource}};
   if(signal?.aborted)return {status:'cancelled'};

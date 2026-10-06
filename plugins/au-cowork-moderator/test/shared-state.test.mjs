@@ -54,7 +54,7 @@ test('independent harness processes share a root, isolate inboxes, refuse live i
 test('bind transition excludes identity switching; shutdown waits and releases its lease',async()=>{
  let resume,entered;const gate=new Promise(resolve=>resume=resolve),started=new Promise(resolve=>entered=resolve);
  const leases=new Set();let polls=0;
- const client=new CentralClient({store:{init:async()=>{},acquire:async id=>leases.add(id),release:async id=>leases.delete(id),load:async id=>row(id)},fetchFn:async(url,options)=>{
+ const client=new CentralClient({store:{init:async()=>{},acquire:async id=>leases.add(id),release:async id=>leases.delete(id),load:async id=>row(id),save:async()=>{}},fetchFn:async(url,options)=>{
   if(url.endsWith('/session')){entered();await gate;return json({});}
   polls++;await new Promise(resolve=>{if(options.signal.aborted)resolve();else options.signal.addEventListener('abort',resolve,{once:true});});throw Error('aborted');
  }});
@@ -70,7 +70,7 @@ test('storage failure stops once, wakes waiters, retains cursor and reconnects a
  const temporary=await fs.mkdtemp(path.join(tmpdir(),'cowork-monitor-')),store=new ConnectionStore(path.join(temporary,'state'));
  let failSave=true,polls=0;const wakes=[];const save=store.save.bind(store);
  await store.save(row(ids[0]));
- store.save=async value=>{if(failSave)throw failure('unsafe_state_directory');return save(value);};
+ store.save=async value=>{if(failSave&&value.cursor>0)throw failure('unsafe_state_directory');return save(value);};
  const client=new CentralClient({store,onEvent:value=>wakes.push(value),fetchFn:async(url,options)=>{
   if(url.endsWith('/session'))return json({});
   polls++;if(polls<=2)return json({events:[],cursor:1});
@@ -82,7 +82,7 @@ test('storage failure stops once, wakes waiters, retains cursor and reconnects a
   assert.deepEqual(await waiting,{status:'unavailable',code:'unsafe_state_directory'});
   assert.deepEqual(wakes,[{status:'unavailable',code:'unsafe_state_directory'}]);
   assert.equal(polls,1);assert.equal((await store.load(ids[0])).cursor,0);
-  await client.disconnect();failSave=false;await client.connect({connection_id:ids[0]});
+  failSave=false;await client.disconnect();await client.connect({connection_id:ids[0]});
   // Await the durable update without racing monitor scheduling.
   const deadline=Date.now()+30000;
   while(client.row.cursor!==1&&Date.now()<deadline&&['running','reconnecting'].includes(client.monitorState))await new Promise(resolve=>setTimeout(resolve,25));
@@ -101,15 +101,17 @@ test('permanent storage errors are actionable through MCP and never retryable',a
  }finally{await runtime.shutdown();}
 });
 
-test('monitor stops after six consecutive transient failures rather than reconnecting forever', {timeout:30000},async()=>{
- let requests=0;const wakes=[];
- const client=new CentralClient({onEvent:value=>wakes.push(value),fetchFn:async()=>{requests++;throw Error('offline');}});
+test('monitor stops immediately on authorization failure without a transport retry',async()=>{
+ let requests=0,retries=0;const wakes=[];
+ const client=new CentralClient({onEvent:value=>wakes.push(value),retryDelayFn:async()=>{retries++;},fetchFn:async()=>{
+  requests++;return new Response(JSON.stringify({error:{code:'unauthenticated'}}),{status:401});
+ }});
  client.row=row(ids[0]);client.startMonitor();await client.work;
- assert.equal(requests,6);assert.equal(client.monitorState,'monitor_retry_exhausted');
- assert.deepEqual(await client.wait(1000),{status:'unavailable',code:'monitor_retry_exhausted'});
- assert.deepEqual(wakes,[{status:'unavailable',code:'monitor_retry_exhausted'}]);
- await assert.rejects(()=>client.request('/session'),{code:'monitor_retry_exhausted'});
- assert.equal(requests,6);
+ assert.equal(requests,1);assert.equal(retries,0);assert.equal(client.monitorState,'unauthenticated');
+ assert.deepEqual(await client.wait(1000),{status:'unavailable',code:'unauthenticated'});
+ assert.deepEqual(wakes,[{status:'unavailable',code:'unauthenticated'}]);
+ await assert.rejects(()=>client.request('/session'),{code:'unauthenticated'});
+ assert.equal(requests,1);
  client.row=null;await client.disconnect();
 });
 
