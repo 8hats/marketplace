@@ -2,6 +2,22 @@
 
 `@au-cowork/harness-personal` 2.0.6 is a Cordis **Host** bundle for 8Hats/DeepSeek. Install this directory with the profile's plugin manager. Its generic patch only inserts `au-cowork-harness-personal`; it does not disable deployment-specific MCP/coordinator rows. The operator must disable the old competing bundle locally to avoid duplicate tools or connection leases.
 
+## Important compatibility prerequisite
+
+This directory is an optional **Cordis Host adapter**, not the generic MCP
+installation for every harness. It requires the Host's `agents` and `tools`
+services, exact Agent-scoped registration through `agent.ctx.get('tools')`,
+`agent/created` and `agent/disposed` lifecycle events, and `agent.steer` for
+plugin-sourced wake notices. The optional `scopeModule` seam does not make an
+unrelated host compatible with those lifecycle/wake APIs.
+
+For other MCP-compatible hosts, run the parent plugin's standalone
+`dist/cowork-mcp.mjs` under Node.js 22+. Its room tools and durable monitor remain
+available, but the other host must supply its own per-chat process/runtime
+ownership, stable isolated state, call routing and optional model-wake adapter.
+Sharing a single MCP process across chats is **not** equivalent to this adapter's
+per-Agent isolation. See the [portable integration constraints](../README.md#important-prerequisite-host-compatibility-and-session-ownership).
+
 ## Deployment configuration
 
 The row accepts:
