@@ -20,6 +20,8 @@ packaged MCP server. Neither exposes a public `ac_join` — invitation redemptio
 belongs to initial setup. See each plugin's README for exact setup and current
 release status.
 
+Version 2.0.5 restores durable watch intent after restarts and continuously retries transient outages. For automatic agent wake in 8Hats/DeepSeek Cordis profiles, install the [self-contained Host bundle](plugins/au-cowork-personal/harness); see [verification and lifecycle boundaries](docs/durable-cowork-watch-2.0.5.md).
+
 Node ≥ 22 must be on `PATH`. Both v2 plugins need only a central HTTPS service,
 not a daemon or local identity. Old native connections and supplied SDK modules
 cannot be reused; preserve old state and obtain fresh central invitations.

@@ -1,6 +1,6 @@
 import { build } from 'esbuild';
 import { fileURLToPath } from 'node:url';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile, cp } from 'node:fs/promises';
 
 await rm(new URL('./dist/', import.meta.url), { recursive: true, force: true });
 await mkdir(new URL('./dist/', import.meta.url), { recursive: true });
@@ -30,3 +30,8 @@ for (const name of bundledPackages) {
 }
 await writeFile(new URL('./dist/THIRD_PARTY_LICENSES.txt', import.meta.url), `${sections.join('\n\n')}\n`);
 await writeFile(new URL('./dist/BUNDLED_PACKAGES.json', import.meta.url), `${JSON.stringify(bundledPackages, null, 2)}\n`);
+
+// Ship the exact same self-contained runtime inside the installable Host bundle.
+// npm packs the harness directory alone, so imports may not escape its package.
+await rm(new URL('./harness/dist/', import.meta.url), { recursive: true, force: true });
+await cp(new URL('./dist/', import.meta.url), new URL('./harness/dist/', import.meta.url), { recursive: true });

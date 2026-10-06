@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
 import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -10,9 +10,9 @@ import {CentralClient,failure} from './central-client.mjs';
 import {centralTools} from './central-tools.mjs';
 
 export {CentralClient,ConnectionStore} from './central-client.mjs';
-export const VERSION='2.0.4';
+export const VERSION='2.0.5';
 const encode=data=>({content:[{type:'text',text:JSON.stringify(data)}],structuredContent:data});
-const instructions='Connect with an HTTPS agent invitation URL or a saved connection_id. Credentials stay in local storage; the user manages filesystem isolation. Read ac_messages and ac_files after connecting. wait_for_room_event waits without consuming mail and supports cancellation. Room commands use current inherited permissions. Review and result approval still require the human owner.';
+const instructions='Connect with an HTTPS agent invitation URL or a saved connection_id. Watching automatically resumes after process restart in the same state directory; explicit disconnect stops watching. Credentials stay in private local storage. Read ac_messages and ac_files after connecting. wait_for_room_event waits without consuming mail and supports cancellation. MCP logging notifications are event hints; automatic model wake requires a Host adapter. Room commands use current inherited permissions. Review and result approval still require the human owner.';
 const messages={
  central_configuration_required:'Set AC_COWORK_URL to the central HTTPS origin, or provide an HTTPS invitation URL.',
  legacy_configuration_rejected:'Remove legacy daemon settings and configure AC_COWORK_URL.',
@@ -27,7 +27,8 @@ const messages={
  unsafe_state_directory:'State requires an absolute directory path without symlinks or junctions in its components. Preserve existing state, repair the path, then disconnect and reconnect your connection_id.',
  unsafe_connection_state:'A saved connection path must be a regular file without symlinks or junctions and within the size limit. Preserve state and inspect the path; do not export credential contents.',
  state_storage_failed:'Local state could not be saved. Check disk space and owning-user access. After repair disconnect and reconnect your connection_id; do not delete state or replay an uncertain mutation.',
- monitor_retry_exhausted:'Monitoring stopped after six consecutive service failures. Check central connectivity, then disconnect and reconnect your connection_id. Saved events and mutation keys are retained.',
+ connection_not_found:'The connection is absent in this local state directory. Check the original chat and AC_COWORK_HOME; do not replay an accepted invitation or copy another live identity.',
+ connection_not_watched:'The selected saved connection is not enabled for watching. Connect explicitly with its connection_id to enable watching.',
  result_visibility_changed:'Current room visibility differs from the saved result. Inspect current resources; do not repeat the mutation.',
 };
 export async function createRuntime({client,injectedServer,clientOptions,profile='moderator'}={}){
@@ -51,11 +52,13 @@ export async function createRuntime({client,injectedServer,clientOptions,profile
  register('connect_to_room','Exchange an HTTPS invite once, or reconnect a saved connection_id; Personal also supports a unique room name.',connectSchema,async input=>ok(await client.connect(input)));
  register('disconnect_from_room','Disconnect while retaining the credential and durable inbox.',z.object({}).strict(),async()=>{const room=client.publicRow();await client.disconnect();return ok({...(room?{room_name:room.room_name}:{}),status:'disconnected'});});
  register('list_rooms','List locally saved central room connections.',z.object({}).strict(),async()=>ok({rooms:(await client.store.list()).map(row=>client.publicRow(row))}));
- register('get_room_status','Check central connectivity, authorization and monitor health.',z.object({}).strict(),async()=>{if(!client.row)throw failure('not_connected');if(!['running','reconnecting','backpressure'].includes(client.monitorState))return ok({...client.publicRow(),can_send:false,can_read:false,monitoring:client.monitorState,error:{code:client.monitorState,message:messages[client.monitorState]??client.monitorState,retryable:false}});const status=await client.request('/session');return ok({...client.publicRow(),can_send:true,can_read:true,monitoring:client.monitorState,room:status.room,capabilities:status.capabilities});});
+ register('get_room_status','Check central connectivity, authorization and monitor health.',z.object({}).strict(),async()=>{if(!client.row)throw client.restoreError??failure('not_connected');if(!['running','reconnecting','backpressure'].includes(client.monitorState))return ok({...client.publicRow(),can_send:false,can_read:false,monitoring:client.monitorState,error:{code:client.monitorState,message:messages[client.monitorState]??client.monitorState,retryable:false}});const status=await client.request('/session');return ok({...client.publicRow(),can_send:true,can_read:true,monitoring:client.monitorState,room:status.room,capabilities:status.capabilities});});
+ register('get_watch_status','Inspect durable watch intent and a secret-free local state namespace fingerprint.',z.object({}).strict(),async()=>ok({state_namespace:createHash('sha256').update(client.store.root??'').digest('hex'),connection_id:client.row?.connection_id??null,watch_enabled:client.row?.watch_enabled===true,monitoring:client.monitorState,pending_events:client.row?.staged.length??0,...(client.restoreError?{restore_error:client.restoreError.code??'state_storage_failed'}:{})}));
  register('wait_for_room_event','Wait without consuming mail; sending remains available while waiting.',z.object({timeout_ms:z.number().int().min(1000).max(50000).default(50000)}).strict(),async(input,signal)=>{const result=await client.wait(input.timeout_ms,signal);return result.status==='unavailable'?{...result,message:messages[result.code]??result.code}:result;},true);
  for(const tool of centralTools(client,profile))register(tool.name,tool.description,tool.inputSchema,tool.execute);
  server.server?.setRequestHandler(ListToolsRequestSchema,async()=>({tools:descriptors.map(tool=>({name:tool.name,description:tool.description,inputSchema:{...zodToJsonSchema(tool.inputSchema,{$refStrategy:'none'}),type:'object'}}))}));
- return {server,client,shutdown:()=>client.disconnect()};
+ if(!client.row&&!client.transition)try{await client.restore();}catch(error){client.restoreError=error;client.stopMonitoring(error.code);}
+ return {server,client,shutdown:()=>client.disconnect({preserveWatch:true})};
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  const runtime=await createRuntime();
