@@ -79,7 +79,7 @@ test('storage failure stops once, wakes waiters, retains cursor and reconnects a
  try{
   await client.connect({connection_id:ids[0]});
   const waiting=client.wait(60000);await client.work;
-  assert.deepEqual(await waiting,{status:'unavailable',code:'unsafe_state_directory'});
+  const result=await waiting;assert.equal(result.status,'unavailable');assert.equal(result.code,'unsafe_state_directory');
   assert.deepEqual(wakes,[{status:'unavailable',code:'unsafe_state_directory'}]);
   assert.equal(polls,1);assert.equal((await store.load(ids[0])).cursor,0);
   failSave=false;await client.disconnect();await client.connect({connection_id:ids[0]});
@@ -108,7 +108,7 @@ test('monitor stops immediately on authorization failure without a transport ret
  }});
  client.row=row(ids[0]);client.startMonitor();await client.work;
  assert.equal(requests,1);assert.equal(retries,0);assert.equal(client.monitorState,'unauthenticated');
- assert.deepEqual(await client.wait(1000),{status:'unavailable',code:'unauthenticated'});
+ const result=await client.wait(1000);assert.equal(result.status,'unavailable');assert.equal(result.code,'unauthenticated');
  assert.deepEqual(wakes,[{status:'unavailable',code:'unauthenticated'}]);
  await assert.rejects(()=>client.request('/session'),{code:'unauthenticated'});
  assert.equal(requests,1);
@@ -132,7 +132,7 @@ test('actual unsafe root during disconnect reports unavailable, retains lease, a
   await client.connect({connection_id:ids[0]});const waiting=client.wait(60000);
   await change(true);
   await assert.rejects(()=>client.disconnect(),{code:'unsafe_state_directory'});
-  assert.deepEqual(await waiting,{status:'unavailable',code:'unsafe_state_directory'});
+  const result=await waiting;assert.equal(result.status,'unavailable');assert.equal(result.code,'unsafe_state_directory');
   assert.equal(client.row.connection_id,ids[0]);assert.equal(store.leases.has(ids[0]),true);
   const status=(await handlers.get('get_room_status')({})).structuredContent.data;
   assert.equal(status.monitoring,'unsafe_state_directory');assert.equal(status.can_read,false);assert.equal(status.can_send,false);

@@ -5,7 +5,25 @@ import path from 'node:path';
 import {homedir} from 'node:os';
 import {setTimeout as delay} from 'node:timers/promises';
 
-export const failure=code=>Object.assign(new Error(code),{code});
+export const failure=(code,details={})=>Object.assign(new Error(code),{code,...details});
+function cancelBestEffort(stream){try{void stream?.cancel().catch(()=>{});}catch{}}
+const transientStatus=status=>[408,425,429].includes(status)||(status>=500&&status<=599&&![501,505].includes(status));
+export function retryAfterMillis(value,now=Date.now()){
+ if(typeof value!=='string'||!value.trim())return 0;
+ const text=value.trim();let ms;
+ if(/^\d+$/.test(text))ms=Number(text)*1000;
+ else if(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(text))ms=Date.parse(text)-now;
+ else return 0;
+ return Number.isFinite(ms)?Math.min(60000,Math.max(0,ms)):0;
+}
+function responseFacts(route,response){
+ const parts=String(route).split('?')[0].split('/').filter(Boolean);
+ const known=['events','session','ack','credentials','messages','commands','files','exchange'].includes(parts[0]);
+ const endpoint=!known?'/unknown':parts[0]==='credentials'?'/credentials/rotate':'/'+parts[0]+(parts.length>1?'/:id':'');
+ const mime=response?.headers.get('content-type')?.split(';')[0].trim().toLowerCase();
+ return {endpoint,http_status:response?.status??null,content_type:['application/json','application/problem+json','text/html','text/plain','application/octet-stream','application/xml','text/xml'].includes(mime)?mime:null};
+}
+const requestDiagnostic=(route,response,reason)=>({...responseFacts(route,response),reason,timestamp:new Date().toISOString()});
 const uuid=/^[a-f0-9-]{36}$/;
 const secret=/^[A-Za-z0-9_-]{43}$/;
 export function centralOrigin(value){
@@ -97,24 +115,41 @@ export class CentralClient {
   const incompatible=['OURS_PORT','OURS_STATE_DIR','OURS_CONFIG','OURS_URL','OURS_TOKEN','OURS_TOKEN_FILE','AU_OURS_URL','AU_OURS_API_TOKEN','AU_OURS_CONFIG','AC_REMOTE_OURS_URL','AC_REMOTE_OURS_TOKEN_FILE','AC_MODERATOR_INPUTS_MODULE'].some(key=>process.env[key]);
   if(incompatible)throw failure('legacy_configuration_rejected');
   try{lstatSync(path.resolve('.au-ours.json'));throw failure('legacy_configuration_rejected');}catch(error){if(error.code!=='ENOENT')throw error;}
+  this.monitorFailures=0;this.malformedFailures=0;this.nextRetryMs=0;this.lastSuccessAt=null;this.monitorDiagnostic=null;this.eventResponseFacts=null;
   this.retryDelayFn=retryDelayFn;this.restoreError=null;this.fetchFn=fetchFn;this.store=store;this.origin=origin?centralOrigin(origin):undefined;this.onEvent=onEvent;this.row=null;this.monitor=null;this.work=null;this.listeners=new Set();this.stateQueue=Promise.resolve();this.monitorState='disconnected';this.transition=null;this.disconnecting=null;
  }
- assertHealthy(){if(this.row&&this.monitor&&!['running','reconnecting','backpressure'].includes(this.monitorState))throw failure(this.monitorState);}
+ assertHealthy(){if(this.row&&this.monitor&&!['running','reconnecting','backpressure','invalid_central_response','response_too_large','central_http_error'].includes(this.monitorState))throw failure(this.monitorState);}
+ monitorHealth(){return {state:this.monitorState,live:this.monitorState==='running',pending_events:this.row?.staged.length??0,consecutive_failures:this.monitorFailures,malformed_failures:this.malformedFailures,next_retry_ms:this.nextRetryMs,last_success_at:this.lastSuccessAt,diagnostic:this.monitorDiagnostic};}
+ pollFailure(reason){return failure('invalid_central_response',{diagnostic:{...(this.eventResponseFacts??responseFacts('/events')),reason,timestamp:new Date().toISOString()}});}
  async request(route,{method='GET',body,bytes,headers={},signal,origin=this.row?.origin??this.origin,credential=this.row?.credential,raw=false}={}){
   this.assertHealthy();if(!origin)throw failure('central_configuration_required');centralOrigin(origin);
   const timeout=AbortSignal.timeout(route.startsWith('/events')?35000:30000),combined=signal?AbortSignal.any([timeout,signal]):timeout;
   let response;
+  const fail=(code,reason,details={})=>failure(code,{diagnostic:requestDiagnostic(route,response,reason),...details});
   try{response=await this.fetchFn(origin+'/api/v1/agent'+route,{method,redirect:'error',signal:combined,headers:{...(credential?{authorization:'Bearer '+credential}:{}),...(body!==undefined?{'content-type':'application/json'}:{}),...headers},...(body!==undefined?{body:JSON.stringify(body)}:bytes!==undefined?{body:bytes}:{})});}
-  catch(error){if(signal?.aborted)throw failure('cancelled');throw failure('central_unavailable');}
+  catch(error){if(signal?.aborted)throw fail('cancelled','cancelled');throw fail('central_unavailable','network_error');}
+  if(route.startsWith('/events'))this.eventResponseFacts=responseFacts(route,response);
+  if(signal?.aborted){cancelBestEffort(response.body);throw fail('cancelled','cancelled');}
+  // Classify upstream status before requiring any successful JSON envelope.
+  // Never retry a mutation here: callers retain its unresolved idempotency key.
+  if(!response.ok&&transientStatus(response.status)){
+   cancelBestEffort(response.body);
+   throw fail(response.status===429?'rate_limited':'central_unavailable','http_transient',{retry_after_ms:retryAfterMillis(response.headers.get('retry-after'))});
+  }
   const reader=response.body?.getReader(),chunks=[];let size=0;
-  if(reader)try{while(true){const item=await reader.read();if(item.done)break;size+=item.value.byteLength;if(size>4*1024*1024){await reader.cancel().catch(()=>{});throw failure('response_too_large');}chunks.push(item.value);}}
-  catch(error){if(error.code==='response_too_large')throw error;if(signal?.aborted)throw failure('cancelled');throw failure('central_unavailable');}
+  if(reader)try{while(true){const item=await reader.read();if(item.done)break;size+=item.value.byteLength;if(size>4*1024*1024){cancelBestEffort(reader);throw fail('response_too_large','response_too_large');}chunks.push(item.value);}}
+  catch(error){if(signal?.aborted)throw fail('cancelled','cancelled');if([401,403].includes(response.status))throw fail(response.status===401?'unauthenticated':'forbidden','http_auth');if(error.code==='response_too_large')throw error;throw fail('central_unavailable','body_transport');}
   finally{reader.releaseLock();}
   const buffer=Buffer.concat(chunks);
   if(raw&&response.ok)return {bytes:buffer,headers:response.headers};
-  let payload;try{payload=JSON.parse(buffer.toString('utf8'));}catch{throw failure('invalid_central_response');}
-  if(!response.ok){const code=typeof payload?.error?.code==='string'&&/^[a-z_]{1,64}$/.test(payload.error.code)?payload.error.code:'central_unavailable';throw failure(code);}
-  if(!Object.hasOwn(payload,'data'))throw failure('invalid_central_response');return payload.data;
+  let payload;try{payload=JSON.parse(buffer.toString('utf8'));}catch{
+   if(!response.ok)throw fail(response.status===401?'unauthenticated':response.status===403?'forbidden':'central_http_error',[401,403].includes(response.status)?'http_auth':'http_error');
+   throw fail('invalid_central_response','invalid_json');
+  }
+  if(!response.ok){let code=typeof payload?.error?.code==='string'&&/^[a-z_]{1,64}$/.test(payload.error.code)?payload.error.code:response.status===401?'unauthenticated':response.status===403?'forbidden':'central_http_error';
+   if([401,403].includes(response.status)&&['central_unavailable','database_busy','rate_limited','invalid_central_response','response_too_large','central_http_error'].includes(code))code=response.status===401?'unauthenticated':'forbidden';
+   throw fail(code,[401,403].includes(response.status)?'http_auth':'json_error',{retry_after_ms:retryAfterMillis(response.headers.get('retry-after'))});}
+  if(payload===null||typeof payload!=='object'||Array.isArray(payload)||!Object.hasOwn(payload,'data'))throw fail('invalid_central_response','missing_data');return payload.data;
  }
  async update(change){
   const work=this.stateQueue.then(async()=>{if(!this.row)throw failure('not_connected');const next=structuredClone(this.row);change(next);await this.store.save(next);this.row=next;});
@@ -164,7 +199,7 @@ export class CentralClient {
      if(!preserveWatch)await this.update(row=>{row.watch_enabled=false;});
      await this.store.release(this.row.connection_id);
     }
-   this.row=null;this.monitor=null;this.monitorState='disconnected';
+   this.row=null;this.monitor=null;this.monitorState='disconnected';this.nextRetryMs=0;
    for(const listener of this.listeners)listener({status:'disconnected'});
   })();
   this.disconnecting=work;
@@ -178,8 +213,9 @@ export class CentralClient {
  }
  wake(event){this.notify({status:'event',event:{event_id:event.event_id,kind:event.kind,resource:event.resource,seq:event.seq}});}
  stopMonitoring(reason){
+  if(['running','reconnecting','backpressure','disconnected'].includes(reason))reason='central_http_error';
   const code=/^[a-z_]{1,64}$/.test(reason??'')?reason:'state_storage_failed';
-  this.monitorState=code;const event={status:'unavailable',code};
+  this.monitorState=code;this.nextRetryMs=0;const event={status:'unavailable',code};
   this.notify(event);
  }
  async renewCredential(){
@@ -195,38 +231,52 @@ export class CentralClient {
   }catch{throw failure('credential_rotation_uncertain');}
  }
  startMonitor(){
-  this.monitor=new AbortController();const signal=this.monitor.signal;this.monitorState='running';
+  this.monitor=new AbortController();const signal=this.monitor.signal;this.monitorState='running';this.monitorFailures=0;this.malformedFailures=0;this.nextRetryMs=0;this.lastSuccessAt=null;this.monitorDiagnostic=null;
   this.work=(async()=>{
-   let failures=0;
    while(!signal.aborted&&this.row){
     try{
      await this.renewCredential();
      await this.reconcileFiles();
      if(this.row.staged.length>=5000){this.monitorState='backpressure';await delay(1000,undefined,{signal});continue;}
      const page=await this.request('/events?after='+this.row.cursor+'&limit=100&wait_ms=25000',{signal});
-     if(!Array.isArray(page.events)||!Number.isSafeInteger(page.cursor)||page.cursor<this.row.cursor)throw failure('invalid_central_response');
+     if(!page||typeof page!=='object'||!Array.isArray(page.events))throw this.pollFailure('invalid_event_page');
+     if(!Number.isSafeInteger(page.cursor)||page.cursor<this.row.cursor)throw this.pollFailure('invalid_cursor');
      const fresh=[];
-     await this.update(row=>{const known=new Set(row.staged.map(event=>event.event_id));for(const event of page.events){if(typeof event.event_id!=='string'||!Number.isSafeInteger(event.seq)||event.seq>page.cursor)throw failure('invalid_central_response');if(!known.has(event.event_id)){row.staged.push(event);fresh.push(event);known.add(event.event_id);}}row.cursor=page.cursor;});
+     await this.update(row=>{
+      const known=new Map(row.staged.map(event=>[event.event_id,event.seq]));let previous=row.cursor;
+      for(const event of page.events){
+       if(!event||typeof event.event_id!=='string'||!event.resource||typeof event.resource.kind!=='string'||typeof event.resource.id!=='string')throw this.pollFailure('invalid_event_sequence');
+       if(!Number.isSafeInteger(event.seq)||event.seq<=0||event.seq>page.cursor||event.seq<previous||(event.seq===previous&&known.get(event.event_id)!==event.seq)||(known.has(event.event_id)&&known.get(event.event_id)!==event.seq))throw this.pollFailure('invalid_event_sequence');
+       previous=event.seq;if(!known.has(event.event_id)){row.staged.push(event);fresh.push(event);known.set(event.event_id,event.seq);}
+      }
+      row.cursor=page.cursor;
+     });
      await this.reconcileFiles();
-     failures=0;this.monitorState='running';for(const event of fresh)if(this.row.staged.some(staged=>staged.event_id===event.event_id))this.wake(event);
+     this.monitorFailures=0;this.malformedFailures=0;this.nextRetryMs=0;this.lastSuccessAt=new Date().toISOString();this.monitorState='running';for(const event of fresh)if(this.row.staged.some(staged=>staged.event_id===event.event_id))this.wake(event);
     }catch(error){
      if(signal.aborted)break;
-     // Retry only transport/service failures, never a local security failure.
+     this.monitorDiagnostic=error.diagnostic??{endpoint:'/monitor',http_status:null,content_type:null,reason:/^[a-z_]{1,64}$/.test(error.code??'')?error.code:'state_storage_failed',timestamp:new Date().toISOString()};
+     this.monitorFailures=Math.min(Number.MAX_SAFE_INTEGER,this.monitorFailures+1);
+     // Successful-response syntax/envelope faults get three attempts; cursor
+     // integrity, authorization, rotation and local storage failures never retry.
+     const malformed=error.code==='invalid_central_response'&&['invalid_json','missing_data','invalid_event_page'].includes(error.diagnostic?.reason);
+     if(malformed)this.malformedFailures++;
+     if(error.diagnostic?.reason==='http_auth'){this.stopMonitoring(error.diagnostic.http_status===401?'unauthenticated':'forbidden');break;}
      const transient=['central_unavailable','database_busy','rate_limited'].includes(error.code);
-     if(!transient){
-      this.stopMonitoring(error.code);break;
-     }
+     if(!transient&&(!malformed||this.malformedFailures>=3)){this.stopMonitoring(error.code);break;}
      if(this.monitorState!=='reconnecting')this.notify({status:'reconnecting',code:error.code});
-      this.monitorState='reconnecting';const backoff=Math.min(30000,500*2**Math.min(failures,6));failures=Math.min(failures+1,6);
-     try{await this.retryDelayFn(Math.min(30000,Math.floor(backoff*(0.75+Math.random()*0.5))),undefined,{signal});}catch{break;}
+     this.monitorState='reconnecting';const backoff=Math.min(30000,500*2**Math.min(this.monitorFailures-1,6));
+     this.nextRetryMs=Math.max(Math.min(30000,Math.floor(backoff*(0.75+Math.random()*0.5))),Math.min(60000,Math.max(0,error.retry_after_ms??0)));
+     try{await this.retryDelayFn(this.nextRetryMs,undefined,{signal});}catch{break;}
     }
    }
   })();
  }
- async wait(timeout,signal){
+ async wait(timeout,signal){const result=await this.waitResult(timeout,signal);return {...result,monitor:this.monitorHealth()};}
+ async waitResult(timeout,signal){
   if(!this.row)return this.restoreError?{status:'unavailable',code:this.restoreError.code??'state_storage_failed'}:{status:'disconnected'};
-  if(!['running','reconnecting','backpressure'].includes(this.monitorState))return {status:'unavailable',code:this.monitorState};
   if(this.row.staged.length)return {status:'event',event:{event_id:this.row.staged[0].event_id,kind:this.row.staged[0].kind,resource:this.row.staged[0].resource}};
+  if(!['running','reconnecting','backpressure'].includes(this.monitorState))return {status:'unavailable',code:this.monitorState};
   if(signal?.aborted)return {status:'cancelled'};
   return new Promise(resolve=>{let timer;const done=value=>{clearTimeout(timer);this.listeners.delete(done);signal?.removeEventListener('abort',cancel);resolve(value);};const cancel=()=>done({status:'cancelled'});this.listeners.add(done);timer=setTimeout(()=>done({status:'timeout'}),timeout);signal?.addEventListener('abort',cancel,{once:true});});
  }

@@ -1,3 +1,10 @@
+## 2.0.6 — connectivity recovery and truthful health
+
+- Classify transient HTTP statuses before JSON parsing, including HTML gateway errors and supported rate limits; honor bounded Retry-After without replaying mutations.
+- Bound malformed successful responses to three attempts while retaining immediate fail-closed authorization, storage, rotation, cursor and sequence integrity checks.
+- Add sanitized monitor diagnostics/freshness to status and wait results; preserve queued mail reads/acknowledgements after a protocol stop without implying healthy polling.
+- Rebuild matching Personal, Moderator and Host distributions; add synthetic recovery, integrity, privacy and mutation-idempotency regression coverage for issue #32.
+
 ## 2.0.5 — durable room watch
 
 - Persist watch intent on connect; automatically restore one watched connection across runtime shutdown/restart. Explicit disconnect keeps credentials and inbox but disables automatic restoration.
