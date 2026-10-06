@@ -1,3 +1,11 @@
+## 2.0.6 — resilient polling and observable monitor health
+
+- Classify retryable HTTP 408/425/429 and 5xx (except 501/505) before reading JSON, including HTML proxy responses. Retain JSON transient error codes; authorization statuses cannot masquerade as transient failures.
+- Honor Retry-After seconds or HTTP dates up to 60 seconds; cap nominal exponential jitter at 30 seconds. Retry malformed successful JSON/envelope/event-page shapes for three attempts total until a valid page resets the budget; cursor and event-sequence integrity failures stop immediately without durable advance.
+- Add `wait_for_room_event.monitor`, `get_watch_status.health` and version, and `get_room_status.health`: state, live flag, queue/failure counts, last success, next delay and sanitized diagnostics. Diagnostics contain only templated endpoint, status, base MIME, fixed reason and time; never URLs, bodies or authorization contents.
+- Expose already queued event metadata with unhealthy monitor health; protocol-stopped monitors retain queued message fetch/ack access, while authorization and storage stops remain blocked. Preserve Moderator default profile, product input schemas and human Owner authority.
+- Sync shared regression tests and rebuild the standalone release bundle; no real room or invitation is used in verification.
+
 ## 2.0.5 — durable room watch
 
 - Persist watch intent on connect; automatically restore one watched connection across runtime shutdown/restart. Explicit disconnect keeps credentials and inbox but disables automatic restoration.

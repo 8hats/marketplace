@@ -57,18 +57,42 @@ records and leases must be regular files; size, record format, lease PID and
 nonce checks remain enforced. Ordinary OS access errors still stop operations.
 Local process leases coordinate one machine; they are not distributed locks.
 
-A path/storage failure now stops monitoring and notifies waiters immediately.
-`get_room_status` reports the stopped reason and `can_read/can_send=false`.
-Transport/service failures retry indefinitely with capped exponential backoff and
-jitter; a successful poll resets the backoff. Jitter spans 75–125% of the
-exponential base, with the actual delay capped at 30 seconds. No manual reconnect is needed for an outage. Authorization,
-rotation, malformed response and local storage/security failures are not transient
-and stop monitoring immediately. After fixing a stopped monitor's cause,
-disconnect and reconnect **your saved connection_id**, unless a
-credential was exposed, revoked or renewal was uncertain. Staged events and
-unresolved mutation keys remain on disk; inspect uncertain actions before retrying.
-If a lease cannot safely be released, restore usable storage first and disconnect
-again. Do not delete the saved connection to clear a monitoring error.
+## 2.0.6 polling policy and health
+
+A path/storage failure stops monitoring and notifies waiters immediately.
+`get_room_status` reports the stopped reason and `can_read/can_send=false` for
+storage and authorization stops. Transport failures, HTTP 408/425/429 and 5xx
+except 501/505 retry indefinitely, independently of the response body (including
+HTML). JSON transient codes `central_unavailable`, `database_busy` and
+`rate_limited` remain supported, but HTTP 401/403 cannot be mislabeled transient
+by those codes. No manual reconnect is needed for an outage.
+
+Jitter spans 75–125% of the exponential base, with nominal jitter capped at
+30 seconds. Retry-After accepts integer seconds or an HTTP date, capped at
+60 seconds, and may extend the actual delay beyond nominal jitter. A valid event
+page resets failure/backoff and malformed-page counts. Malformed HTTP 200 JSON
+syntax, data envelopes or event-page/events-array shapes get three attempts total;
+transport interruptions do not reset this budget. Missing, invalid or backward
+cursors and invalid event-sequence integrity stop immediately with no durable
+cursor or staged-inbox advance. Authorization, rotation and local storage/security
+failures also stop immediately.
+
+`wait_for_room_event` adds a `monitor` snapshot; `get_watch_status` adds `health`
+and `version`, and `get_room_status` adds `health`. Health includes state, `live`,
+pending-event/failure counts, last success, next retry delay and diagnostics.
+`live=false` while reconnecting or stopped. Diagnostics contain only templated
+endpoint, HTTP status, base MIME, fixed reason and timestamp: never full URLs,
+response bodies, invitations or authorization contents. Already queued event
+metadata may be returned even while unsafe; this is not proof of live polling or
+read authorization. Authorization and storage stops still block reads, while a
+protocol-invalid stopped monitor leaves queued message fetch/ack usable.
+
+After fixing a stopped monitor's cause, disconnect and reconnect **your saved
+connection_id**, unless a credential was exposed, revoked or renewal was uncertain.
+Staged events and unresolved mutation keys remain on disk; inspect uncertain
+actions before retrying. If a lease cannot safely be released, restore usable
+storage first and disconnect again. Do not delete the saved connection to clear
+a monitoring error.
 
 ## Evidence and scope
 

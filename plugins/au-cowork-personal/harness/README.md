@@ -1,6 +1,6 @@
 # Personal Cowork durable Host adapter
 
-`@au-cowork/harness-personal` 2.0.5 is a Cordis **Host** bundle for 8Hats/DeepSeek. Install this directory with the profile's plugin manager. Its generic patch only inserts `au-cowork-harness-personal`; it does not disable deployment-specific MCP/coordinator rows. The operator must disable the old competing bundle locally to avoid duplicate tools or connection leases.
+`@au-cowork/harness-personal` 2.0.6 is a Cordis **Host** bundle for 8Hats/DeepSeek. Install this directory with the profile's plugin manager. Its generic patch only inserts `au-cowork-harness-personal`; it does not disable deployment-specific MCP/coordinator rows. The operator must disable the old competing bundle locally to avoid duplicate tools or connection leases.
 
 ## Deployment configuration
 
@@ -24,7 +24,7 @@ Monitoring runs only while the Host process and the exact live agent exist. Clos
 
 External message, attachment and command hints are coalesced into plugin-sourced agent notices. A notice may start model work and incur normal model token/call costs; it is **not** human authorization. Room content remains untrusted, and notices explicitly prohibit automatic room replies. Self-authored messages are suppressed via read-only message-author lookup, without consuming mail, acknowledgement or room mutations. Transient lookup errors remain pending with bounded retry delay. Host dedupe and pending queues are each bounded to 5000 IDs. Runtime logging is intercepted directly; ordinary MCP logging alone does not wake the Harness model.
 
-`mcp__au-cowork__get_watch_status` exposes session id, SHA-256 state-directory fingerprint, monitor state, watch flag and Host pending count. When the runtime already provides this tool, the adapter adds these fields under `structuredContent.host_watch` rather than registering a duplicate. It never exposes a credential, saved row or filesystem path. Startup/unavailable/reconnecting states produce at most one warning per attachment lifetime; module/configuration failures unwind partial registrations. Host activation diagnostics remain the source for import/configuration failures that occur before the status tool is available.
+`mcp__au-cowork__get_watch_status` exposes session id, SHA-256 state-directory fingerprint, monitor state, watch flag and Host pending count. When the runtime already provides this tool, the adapter adds these fields under `structuredContent.host_watch` rather than registering a duplicate. The runtime additionally exposes its version and sanitized `health`; wait results include `monitor` health independently of queued-mail status. It never exposes a credential, saved row or filesystem path. Existing installed JavaScript generations may require a Harness restart to load an updated runtime; confirm `get_watch_status` reports the expected version rather than relying only on saved package selection. Startup/unavailable/reconnecting states produce at most one warning per attachment lifetime; module/configuration failures unwind partial registrations. Host activation diagnostics remain the source for import/configuration failures that occur before the status tool is available.
 
 ## Verification
 
