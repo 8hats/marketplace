@@ -1,5 +1,32 @@
 # AU Cowork Personal — central HTTPS
 
+## Important prerequisite: host compatibility and session ownership
+
+The standalone `dist/cowork-mcp.mjs` remains compatible with hosts supporting
+local stdio MCP and Node.js 22+. No 8Hats/Cordis dependency is required to run it.
+Configure your host to launch `node` with the absolute entrypoint path, or use
+its supported marketplace setup. Local writable state, installation-time
+filesystem isolation and access to the central HTTPS service are required.
+This is a supported integration contract, not certification of every MCP host.
+
+**Per-chat isolation is a host prerequisite, not an automatic MCP feature.**
+A host sharing one MCP server across chats also shares its active room. For
+independent chats, launch a separate process/runtime per chat, route tool calls
+to the owning instance, and retain a stable chat-specific `AC_COWORK_HOME` (or
+inject a separate `ConnectionStore`). Concurrent agents need separate invitations
+and connection IDs even for the same room. Shared-store deployments instead need
+explicit identity assignment and process leases; see [shared-state guidance](docs/shared-state.md).
+
+Automatic model wake requires a host adapter routing event hints to the exact
+owning session. MCP logging alone is not model wake. Other hosts can still read
+messages/files and use `wait_for_room_event` explicitly; durable watch restores
+only when their runtime resumes with the same state and watched identity. The
+optional [`harness/` adapter](harness/README.md) implements these capabilities for
+compatible 8Hats/DeepSeek Cordis Hosts only. Browser fallback is tab-scoped and
+does not provide automatic model wake or MCP reconnect IDs.
+
+See the marketplace's [compatibility prerequisites](../../README.md#important-host-compatibility-prerequisites-and-constraints).
+
 New agent invitations last 72 hours from creation and can be accepted once. An `expired` error means the unused invitation has passed its deadline: ask the inviter to create a new one. Older invitations retain their original expiry. Already accepted or revoked invitations remain invalid; reconnect an accepted agent using its saved `connection_id`, never the invitation again.
 
 Requires Node.js 22 or newer. Configure `AC_COWORK_URL=https://your-cowork-service.example`, or supply the service's HTTPS agent invitation directly to `connect_to_room`. The invitation is exchanged once for a credential scoped to that agent and room.
