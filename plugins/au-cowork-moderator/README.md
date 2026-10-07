@@ -53,3 +53,5 @@ is an explicit persistent opt-out. Host code can use
 `retryDelayFn(ms, value, {signal})` with the Node timers/promises signature for
 deterministic retry tests. `get_watch_status` exposes watch health and a secret-free
 state namespace fingerprint. Never publish `client.row` or log credentials.
+
+The distinct Moderator tool `ac_room_status_set` sets only the current authorized room business status: `todo` (To do), `in_progress` (In progress), or `done` (Done). New rooms default to To do. The server requires active Moderator-purpose membership and its current command grant. Read back with `ac_read` (`kind: "room"` or `"context"`). Status changes are manual and reversible; Done does not close, archive, delete, restrict writing, or finish a Fleet task. Inspect an uncertain mutation before repeating it.

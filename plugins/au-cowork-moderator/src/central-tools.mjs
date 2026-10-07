@@ -8,13 +8,13 @@ const empty=z.object({}).strict();
 const metadata=z.string().min(1).refine(value=>Buffer.byteLength(value)<=limits.metadata_bytes);
 const reply={reply_to_wire_id:id.optional(),reply_to_sentence:z.number().int().positive().safe().optional()};
 const validReply=value=>value.reply_to_sentence===undefined||value.reply_to_wire_id!==undefined;
-const moderatorOnly=new Set(['ac_request_route','ac_review_publish','ac_publication_propose','ac_intervention_record','ac_stage_explain','ac_result_create']);
+const moderatorOnly=new Set(['ac_room_status_set','ac_request_route','ac_review_publish','ac_publication_propose','ac_intervention_record','ac_stage_explain','ac_result_create']);
 export function centralTools(client,profile='personal'){
  const tools=[];
  const add=(name,description,inputSchema,execute)=>tools.push({name,description,inputSchema,execute});
  for(const [command,operation] of Object.entries(consumerCommands)){
   const name=consumerToolName(command);if(profile!=='moderator'&&moderatorOnly.has(name))continue;
-  add(name,`Call ${command} under current room authorization.`,schemas[operation],async input=>{
+  add(name,name==='ac_room_status_set'?'Set this authorized room business status to To do, In progress or Done. Requires current Moderator authority. Done keeps the room open and writable; changes are explicit and reversible.':`Call ${command} under current room authorization.`,schemas[operation],async input=>{
    const result=await client.mutation('/commands',{body:{command,arguments:input}});
    return result.result;
   });
