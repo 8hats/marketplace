@@ -32,7 +32,7 @@ test('product tool names and JSON schemas match the baseline transport',async()=
  const baseline=JSON.parse(await fs.readFile(new URL('./baseline-tool-schemas.json',import.meta.url),'utf8'));
  const tools=centralTools({});
  for(const tool of tools)assert.equal(createHash('sha256').update(JSON.stringify(zodToJsonSchema(tool.inputSchema,{$refStrategy:'none'}))).digest('hex'),baseline[tool.name],tool.name);
- const omitted=new Set(['ac_join','ac_request_route','ac_review_publish','ac_publication_propose','ac_intervention_record','ac_stage_explain','ac_result_create']);
+ const omitted=new Set(['ac_room_status_set','ac_join','ac_request_route','ac_review_publish','ac_publication_propose','ac_intervention_record','ac_stage_explain','ac_result_create']);
  assert.deepEqual(tools.map(tool=>tool.name).sort(),Object.keys(baseline).filter(name=>!omitted.has(name)).sort());
 });
 test('invite parsing rejects HTTP, origin changes and secret-bearing queries',()=>{
