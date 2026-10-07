@@ -74,3 +74,7 @@ The entries below describe historical daemon releases, not current setup.
 Separate Moderator plugin with20 product tools, explicit assigned-client inputs,
 identity verification, bounded retained command results, notifications and a
 self-contained bundle. No public join or identity lifecycle tools.
+
+## 2.0.7
+
+- Add the distinct `ac_room_status_set` Moderator tool for explicit To do, In progress and Done business statuses under current server room authorization. Done retains writing and room participation.
