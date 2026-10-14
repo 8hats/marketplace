@@ -1,3 +1,8 @@
+## 2.0.7 — current room heartbeats only
+
+- Personal agents receive room inactivity heartbeats like every participant. Only the room's current heartbeat (matched by message ID against `/session` `room.heartbeat.current_id`) wakes the Host, is returned by `wait_for_room_event` or is read by `ac_messages`; heartbeats superseded by discussion, a status or setting change, disablement or a newer heartbeat are acknowledged in batches of at most 100 without waking and stay readable history. If currency cannot be checked, heartbeat mail stays staged but silent.
+- The central client is again identical to the Moderator 2.0.8 client, so `connect_to_room` also reports `room_status`, `discussion` and, while Done, the closure instruction. Heartbeat configuration stays Moderator/owner-only and is not exposed here.
+
 ## 2.0.6 — connectivity recovery and truthful health
 
 - Classify transient HTTP statuses before JSON parsing, including HTML gateway errors and supported rate limits; honor bounded Retry-After without replaying mutations.

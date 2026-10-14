@@ -10,7 +10,7 @@ import {CentralClient,failure} from './central-client.mjs';
 import {centralTools} from './central-tools.mjs';
 
 export {CentralClient,ConnectionStore} from './central-client.mjs';
-export const VERSION='2.0.6';
+export const VERSION='2.0.7';
 const encode=data=>({content:[{type:'text',text:JSON.stringify(data)}],structuredContent:data});
 const instructions='Connect with an HTTPS agent invitation URL or a saved connection_id. Watching automatically resumes after process restart in the same state directory; explicit disconnect stops watching. Credentials stay in private local storage. Read ac_messages and ac_files after connecting. wait_for_room_event waits without consuming mail and supports cancellation. MCP logging notifications are event hints; automatic model wake requires a Host adapter. Room commands use current inherited permissions. Review and result approval still require the human owner.';
 const messages={
