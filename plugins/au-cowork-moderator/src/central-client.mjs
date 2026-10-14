@@ -37,6 +37,12 @@ export function invitation(value,configured){
  if(url.username||url.password||url.pathname!=='/'||url.search||!match||(configured&&origin!==centralOrigin(configured)))throw failure('invalid_invitation');
  return {origin,token:match[1]};
 }
+/** Current room status and, while Done, the room closure instruction from the central session. */
+export function roomDiscussion(room){
+ if(!room||typeof room.status!=='string'||!['open','closed'].includes(room.discussion))return {};
+ return {room_status:room.status,discussion:room.discussion,...(typeof room.instruction==='string'?{instruction:room.instruction}:{})};
+}
+const isHeartbeat=event=>event.kind==='roomHeartbeatNotice';
 export class ConnectionStore {
  constructor(root=process.env.AC_COWORK_HOME??path.join(homedir(),'.local','share','au-cowork-central')){if(!path.isAbsolute(root))throw failure('unsafe_state_directory');this.root=root;this.leases=new Map();}
  async init(){
@@ -173,21 +179,25 @@ export class CentralClient {
  async bind({invite,connection_id,room_name,as_agent,restoring=false}){
   if([invite,connection_id,room_name].filter(Boolean).length!==1)throw failure('invalid_request');
   await this.store.init();
+  let session;
   if(invite){
    const parsed=invitation(invite,this.origin),accepted=await this.request('/exchange',{method:'POST',body:{token:parsed.token,display_name:as_agent??'Cowork agent'},origin:parsed.origin,credential:undefined});
    if(!secret.test(accepted.credential)||typeof accepted.room_id!=='string'||typeof accepted.agent_id!=='string')throw failure('invalid_central_response');
    const row={version:1,connection_id:randomUUID(),origin:parsed.origin,...accepted,cursor:0,staged:[],consumed_files:[],watch_enabled:true};
    await this.store.acquire(row.connection_id);
    try{await this.store.save(row);this.row=row;}catch(error){await this.store.release(row.connection_id);throw failure('credential_storage_failed');}
+   // Admission already succeeded; the current room discussion state is informative only.
+   session=await this.request('/session').catch(()=>undefined);
   }else{
    if(room_name){const rows=(await this.store.list()).filter(row=>row.room_name===room_name);if(rows.length!==1)throw failure(rows.length?'connection_selection_required':'connection_not_found');connection_id=rows[0].connection_id;}
    await this.store.acquire(connection_id);
-   try{const row=await this.store.load(connection_id);if(row.rotation_pending)throw failure('credential_rotation_uncertain');if(this.origin&&row.origin!==this.origin)throw failure('central_origin_mismatch');if(!restoring)await this.request('/session',{origin:row.origin,credential:row.credential});if(row.watch_enabled!==true){row.watch_enabled=true;await this.store.save(row);}this.row=row;}catch(error){await this.store.release(connection_id);throw error;}
+   try{const row=await this.store.load(connection_id);if(row.rotation_pending)throw failure('credential_rotation_uncertain');if(this.origin&&row.origin!==this.origin)throw failure('central_origin_mismatch');if(!restoring)session=await this.request('/session',{origin:row.origin,credential:row.credential});if(row.watch_enabled!==true){row.watch_enabled=true;await this.store.save(row);}this.row=row;}catch(error){await this.store.release(connection_id);throw error;}
   }
   this.restoreError=null;this.startMonitor();
-  // Catch-up already staged on disk must wake the host again after restart.
-  for(const event of this.row.staged)this.wake(event);
-  return {...this.publicRow(),monitoring_instructions:'Watching is durable across process restarts with the same state directory. Read ac_messages and ac_files; wait_for_room_event does not consume mail. Explicit disconnect stops watching.'};
+  // Catch-up already staged on disk must wake the host again after restart, except superseded heartbeats.
+  const current=await this.pruneHeartbeats(session);
+  for(const event of this.row.staged)if(current||!isHeartbeat(event))this.wake(event);
+  return {...this.publicRow(),...roomDiscussion(session?.room),monitoring_instructions:'Watching is durable across process restarts with the same state directory. Read ac_messages and ac_files; wait_for_room_event does not consume mail. Explicit disconnect stops watching.'};
  }
  async disconnect({preserveWatch=false}={}){
   if(this.disconnecting)return this.disconnecting;
@@ -252,7 +262,10 @@ export class CentralClient {
       row.cursor=page.cursor;
      });
      await this.reconcileFiles();
-     this.monitorFailures=0;this.malformedFailures=0;this.nextRetryMs=0;this.lastSuccessAt=new Date().toISOString();this.monitorState='running';for(const event of fresh)if(this.row.staged.some(staged=>staged.event_id===event.event_id))this.wake(event);
+     this.monitorFailures=0;this.malformedFailures=0;this.nextRetryMs=0;this.lastSuccessAt=new Date().toISOString();this.monitorState='running';
+     // Status, policy or discussion may have changed while staging and reconciling files.
+     const current=fresh.some(isHeartbeat)?await this.pruneHeartbeats():true;
+     for(const event of fresh)if((current||!isHeartbeat(event))&&this.row.staged.some(staged=>staged.event_id===event.event_id))this.wake(event);
     }catch(error){
      if(signal.aborted)break;
      this.monitorDiagnostic=error.diagnostic??{endpoint:'/monitor',http_status:null,content_type:null,reason:/^[a-z_]{1,64}$/.test(error.code??'')?error.code:'state_storage_failed',timestamp:new Date().toISOString()};
@@ -275,10 +288,26 @@ export class CentralClient {
  async wait(timeout,signal){const result=await this.waitResult(timeout,signal);return {...result,monitor:this.monitorHealth()};}
  async waitResult(timeout,signal){
   if(!this.row)return this.restoreError?{status:'unavailable',code:this.restoreError.code??'state_storage_failed'}:{status:'disconnected'};
-  if(this.row.staged.length)return {status:'event',event:{event_id:this.row.staged[0].event_id,kind:this.row.staged[0].kind,resource:this.row.staged[0].resource}};
+  const current=await this.pruneHeartbeats();
+  const next=this.row?.staged.find(event=>current||!isHeartbeat(event));
+  if(next)return {status:'event',event:{event_id:next.event_id,kind:next.kind,resource:next.resource}};
   if(!['running','reconnecting','backpressure'].includes(this.monitorState))return {status:'unavailable',code:this.monitorState};
   if(signal?.aborted)return {status:'cancelled'};
   return new Promise(resolve=>{let timer;const done=value=>{clearTimeout(timer);this.listeners.delete(done);signal?.removeEventListener('abort',cancel);resolve(value);};const cancel=()=>done({status:'cancelled'});this.listeners.add(done);timer=setTimeout(()=>done({status:'timeout'}),timeout);signal?.addEventListener('abort',cancel,{once:true});});
+ }
+ /**
+  * Heartbeat mail is time-sensitive: only the room's current heartbeat (by message ID) may wake the host
+  * or be reported. Superseded heartbeats are acknowledged; their room messages stay readable history.
+  * Returns false when currency could not be checked; callers then keep heartbeat mail staged but silent.
+  */
+ async pruneHeartbeats(session){
+  if(!this.row?.staged.some(isHeartbeat))return true;
+  try{
+   session??=await this.request('/session');
+   const current=session?.room?.heartbeat?.current_id??null;
+   await this.acknowledge(this.row.staged.filter(event=>isHeartbeat(event)&&event.resource.id!==current));
+   return true;
+  }catch{return false;}
  }
  async acknowledge(events){
   if(!events.length)return;
@@ -306,7 +335,8 @@ export class CentralClient {
  }
  async messages(input={}){
   if(!this.row)throw failure('not_connected');
-  const selected=this.row.staged.filter(event=>event.resource.kind!=='attachment'&&(!event.retry_after||event.retry_after<=Date.now())&&(!input.wire_ids||input.wire_ids.includes(event.resource.id)||input.wire_ids.includes(event.event_id))).slice(0,input.limit??50);
+  const current=await this.pruneHeartbeats();
+  const selected=this.row.staged.filter(event=>event.resource.kind!=='attachment'&&(current||!isHeartbeat(event))&&(!event.retry_after||event.retry_after<=Date.now())&&(!input.wire_ids||input.wire_ids.includes(event.resource.id)||input.wire_ids.includes(event.event_id))).slice(0,input.limit??50);
   const messages=[],command_results=[],unmatched_results=[],consumed=[],deferred=[];
   for(const event of selected){
    try{

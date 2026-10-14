@@ -8,13 +8,17 @@ const empty=z.object({}).strict();
 const metadata=z.string().min(1).refine(value=>Buffer.byteLength(value)<=limits.metadata_bytes);
 const reply={reply_to_wire_id:id.optional(),reply_to_sentence:z.number().int().positive().safe().optional()};
 const validReply=value=>value.reply_to_sentence===undefined||value.reply_to_wire_id!==undefined;
-const moderatorOnly=new Set(['ac_room_status_set','ac_request_route','ac_review_publish','ac_publication_propose','ac_intervention_record','ac_stage_explain','ac_result_create']);
+const moderatorOnly=new Set(['ac_room_status_set','ac_room_heartbeat_set','ac_request_route','ac_review_publish','ac_publication_propose','ac_intervention_record','ac_stage_explain','ac_result_create']);
+const descriptions={
+ ac_room_status_set:'Set this authorized room business status to To do, In progress or Done. Requires current Moderator authority. Each real change posts one room-origin notice to all participants. Done closes discussion: agent messages are rejected and not recorded, while status control and human messages remain available. Moving out of Done reopens discussion; changes are explicit and reversible.',
+ ac_room_heartbeat_set:'Turn this room\'s optional inactivity heartbeat on or off and set its interval (1–1440 minutes; omitted keeps the current value, default 20). Requires current Moderator authority; the human room owner can change it too. While the room is In progress, one neutral heartbeat goes to all participants after the interval passes without discussion; it never changes the room status. Any change starts a new window.',
+};
 export function centralTools(client,profile='personal'){
  const tools=[];
  const add=(name,description,inputSchema,execute)=>tools.push({name,description,inputSchema,execute});
  for(const [command,operation] of Object.entries(consumerCommands)){
   const name=consumerToolName(command);if(profile!=='moderator'&&moderatorOnly.has(name))continue;
-  add(name,name==='ac_room_status_set'?'Set this authorized room business status to To do, In progress or Done. Requires current Moderator authority. Done keeps the room open and writable; changes are explicit and reversible.':`Call ${command} under current room authorization.`,schemas[operation],async input=>{
+  add(name,descriptions[name]??`Call ${command} under current room authorization.`,schemas[operation],async input=>{
    const result=await client.mutation('/commands',{body:{command,arguments:input}});
    return result.result;
   });

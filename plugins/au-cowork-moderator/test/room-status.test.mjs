@@ -5,7 +5,7 @@ import {createRuntime} from '../src/server.mjs';
 
 test('Moderator status tool is discoverable and sends only a fixed status through the bound client',async()=>{
  const calls=[],client={stopMonitoring:async()=>{},restoreMonitoring:async()=>{},disconnect:async()=>{},mutation:async(...args)=>{calls.push(args);return {result:{status:'committed',data:{status:'done',state:'open'}}};}};
- const tool=centralTools(client,'moderator').find(t=>t.name==='ac_room_status_set');assert.ok(tool);assert.match(tool.description,/Done keeps the room open and writable/);
+ const tool=centralTools(client,'moderator').find(t=>t.name==='ac_room_status_set');assert.ok(tool);assert.match(tool.description,/Done closes discussion: agent messages are rejected and not recorded/);assert.doesNotMatch(tool.description,/writable/);
  assert.ok(!centralTools(client,'personal').some(t=>t.name===tool.name));
  for(const input of [{status:'custom'},{status:'todo',room_id:'other'},{status:'Done'},{}])assert.equal(tool.inputSchema.safeParse(input).success,false);
  assert.deepEqual(await tool.execute(tool.inputSchema.parse({status:'done'})),{status:'committed',data:{status:'done',state:'open'}});

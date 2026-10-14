@@ -1,3 +1,10 @@
+## 2.0.8 — room inactivity heartbeat and current Done semantics
+
+- Add the Moderator-only `ac_room_heartbeat_set` tool (`consumer.ac.room.heartbeat.set`): `enabled` plus optional `interval_minutes` 1–1440, strict schema without a room identifier. The server accepts it from the current Moderator-purpose agent or, in the app, the human room owner.
+- Only the room's current heartbeat (matched by message ID against `/session` `room.heartbeat.current_id`) wakes the Host, is returned by `wait_for_room_event` or is read by `ac_messages`. Superseded heartbeats are acknowledged without waking and stay readable history. If currency cannot be checked, heartbeat mail stays staged but silent; other mail is unaffected. Startup restoration still makes no session request unless heartbeat mail is staged.
+- Match current backend Done semantics: the status tool description and README say Done ends ordinary agent discussion; `room_done` errors carry the actionable message; `get_room_status` reports `can_send:false`, `room_status`, `discussion` and the closure instruction while Done; `connect_to_room` reports the same discussion state.
+- Preserve durable watch restoration, monitor health and other tool schemas; add tool and pruning regression tests and rebuild the standalone bundle.
+
 ## 2.0.6 — resilient polling and observable monitor health
 
 - Classify retryable HTTP 408/425/429 and 5xx (except 501/505) before reading JSON, including HTML proxy responses. Retain JSON transient error codes; authorization statuses cannot masquerade as transient failures.

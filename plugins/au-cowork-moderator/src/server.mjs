@@ -6,11 +6,11 @@ import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
 import {ListToolsRequestSchema} from '@modelcontextprotocol/sdk/types.js';
 import {z,ZodError} from 'zod';
 import {zodToJsonSchema} from 'zod-to-json-schema';
-import {CentralClient,failure} from './central-client.mjs';
+import {CentralClient,failure,roomDiscussion} from './central-client.mjs';
 import {centralTools} from './central-tools.mjs';
 
 export {CentralClient,ConnectionStore} from './central-client.mjs';
-export const VERSION='2.0.7';
+export const VERSION='2.0.8';
 const encode=data=>({content:[{type:'text',text:JSON.stringify(data)}],structuredContent:data});
 const instructions='Connect with an HTTPS agent invitation URL or a saved connection_id. Watching automatically resumes after process restart in the same state directory; explicit disconnect stops watching. Credentials stay in private local storage. Read ac_messages and ac_files after connecting. wait_for_room_event waits without consuming mail and supports cancellation. MCP logging notifications are event hints; automatic model wake requires a Host adapter. Room commands use current inherited permissions. Review and result approval still require the human owner.';
 const messages={
@@ -22,6 +22,7 @@ const messages={
  credential_rotation_uncertain:'Credential renewal could not be confirmed. Do not retry rotation; ask the inviting person to remove this agent and issue a new invitation.',
  unauthenticated:'The credential expired or was revoked. Ask the inviting person to remove this agent and issue a new invitation.',
  central_unavailable:'The central service is unavailable. Retry reads; inspect a mutation outcome before repeating it.',
+ room_done:'The message was NOT recorded because the room is done; discussion has ended. Please do not send messages here.',
  connection_in_use:'This identity is already open in another process. For concurrent agents use separate invitations and connection_ids in the same AC_COWORK_HOME; disconnect the original process before handing off its identity.',
  connection_selection_required:'Several identities are saved for this room. Use your own connection_id from list_rooms; do not take another agent identity.',
  unsafe_state_directory:'State requires an absolute directory path without symlinks or junctions in its components. Preserve existing state, repair the path, then disconnect and reconnect your connection_id.',
@@ -52,7 +53,7 @@ export async function createRuntime({client,injectedServer,clientOptions,profile
  register('connect_to_room','Exchange an HTTPS invite once, or reconnect a saved connection_id; Personal also supports a unique room name.',connectSchema,async input=>ok(await client.connect(input)));
  register('disconnect_from_room','Disconnect while retaining the credential and durable inbox.',z.object({}).strict(),async()=>{const room=client.publicRow();await client.disconnect();return ok({...(room?{room_name:room.room_name}:{}),status:'disconnected'});});
  register('list_rooms','List locally saved central room connections.',z.object({}).strict(),async()=>ok({rooms:(await client.store.list()).map(row=>client.publicRow(row))}));
- register('get_room_status','Check central connectivity, authorization and monitor health.',z.object({}).strict(),async()=>{if(!client.row)throw client.restoreError??failure('not_connected');if(!['running','reconnecting','backpressure','invalid_central_response','response_too_large','central_http_error'].includes(client.monitorState))return ok({...client.publicRow(),can_send:false,can_read:false,monitoring:client.monitorState,health:client.monitorHealth(),error:{code:client.monitorState,message:messages[client.monitorState]??client.monitorState,retryable:false}});const status=await client.request('/session');return ok({...client.publicRow(),can_send:true,can_read:true,monitoring:client.monitorState,health:client.monitorHealth(),room:status.room,capabilities:status.capabilities});});
+ register('get_room_status','Check central connectivity, authorization and monitor health.',z.object({}).strict(),async()=>{if(!client.row)throw client.restoreError??failure('not_connected');if(!['running','reconnecting','backpressure','invalid_central_response','response_too_large','central_http_error'].includes(client.monitorState))return ok({...client.publicRow(),can_send:false,can_read:false,monitoring:client.monitorState,health:client.monitorHealth(),error:{code:client.monitorState,message:messages[client.monitorState]??client.monitorState,retryable:false}});const status=await client.request('/session');return ok({...client.publicRow(),can_send:status.room?.status!=='done',...roomDiscussion(status.room),can_read:true,monitoring:client.monitorState,health:client.monitorHealth(),room:status.room,capabilities:status.capabilities});});
  register('get_watch_status','Inspect durable watch intent and a secret-free local state namespace fingerprint.',z.object({}).strict(),async()=>ok({version:VERSION,health:client.monitorHealth(),state_namespace:createHash('sha256').update(client.store.root??'').digest('hex'),connection_id:client.row?.connection_id??null,watch_enabled:client.row?.watch_enabled===true,monitoring:client.monitorState,pending_events:client.row?.staged.length??0,...(client.restoreError?{restore_error:client.restoreError.code??'state_storage_failed'}:{})}));
  register('wait_for_room_event','Wait without consuming mail; sending remains available while waiting.',z.object({timeout_ms:z.number().int().min(1000).max(50000).default(50000)}).strict(),async(input,signal)=>{const result=await client.wait(input.timeout_ms,signal);return result.status==='unavailable'?{...result,message:messages[result.code]??result.code}:result;},true);
  for(const tool of centralTools(client,profile))register(tool.name,tool.description,tool.inputSchema,tool.execute);
