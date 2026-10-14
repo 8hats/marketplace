@@ -305,7 +305,9 @@ export class CentralClient {
   try{
    session??=await this.request('/session');
    const current=session?.room?.heartbeat?.current_id??null;
-   await this.acknowledge(this.row.staged.filter(event=>isHeartbeat(event)&&event.resource.id!==current));
+   // The central acknowledgement accepts at most 100 event IDs per request.
+   const stale=this.row.staged.filter(event=>isHeartbeat(event)&&event.resource.id!==current);
+   for(let offset=0;offset<stale.length;offset+=100)await this.acknowledge(stale.slice(offset,offset+100));
    return true;
   }catch{return false;}
  }
