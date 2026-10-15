@@ -32,10 +32,26 @@ export function centralOrigin(value){
  return url.origin;
 }
 export function invitation(value,configured){
- let url;try{url=new URL(value);}catch{throw failure('invalid_invitation');}
- const origin=centralOrigin(url.origin),match=url.hash.match(/^#\/agent-invite\/([A-Za-z0-9_-]{43})$/);
- if(url.username||url.password||url.pathname!=='/'||url.search||!match||(configured&&origin!==centralOrigin(configured)))throw failure('invalid_invitation');
- return {origin,token:match[1]};
+ const invalid=()=>Object.assign(failure('invalid_invitation'),{input_format:true});
+ if(typeof value!=='string'||value.length>8192||/[\u0000-\u0020\u007f]/.test(value))throw invalid();
+ let url;try{url=new URL(value);}catch{throw invalid();}
+ if(url.protocol!=='https:'||url.username||url.password||url.search||(configured&&url.origin!==centralOrigin(configured)))throw invalid();
+ const canonical=url.pathname==='/'&&url.hash.match(/^#\/agent-invite\/([A-Za-z0-9_-]{43})$/);
+ if(canonical)return {origin:url.origin,token:canonical[1]};
+ if(url.pathname!=='/agent-instructions')throw invalid();
+ const fields=new URLSearchParams(url.hash.slice(1));
+ if([...fields.keys()].some(key=>!['token','invite','name'].includes(key))||['token','invite','name'].some(key=>fields.getAll(key).length>1)||fields.has('token')===fields.has('invite'))throw invalid();
+ let token=fields.get('token');
+ if(fields.has('invite')){
+  // ponytail: validate one historical nested canonical URL; never fetch or recurse.
+  if(/[\u0000-\u0020\u007f]/.test(fields.get('invite')))throw invalid();
+  let original;try{original=new URL(fields.get('invite'));}catch{throw invalid();}
+  const match=original.hash.match(/^#\/agent-invite\/([A-Za-z0-9_-]{43})$/);
+  if(original.origin!==url.origin||original.username||original.password||original.pathname!=='/'||original.search||!match)throw invalid();
+  token=match[1];
+ }
+ if(!secret.test(token??''))throw invalid();
+ return {origin:url.origin,token};
 }
 export class ConnectionStore {
  constructor(root=process.env.AC_COWORK_HOME??path.join(homedir(),'.local','share','au-cowork-central')){if(!path.isAbsolute(root))throw failure('unsafe_state_directory');this.root=root;this.leases=new Map();}
@@ -174,11 +190,14 @@ export class CentralClient {
   if([invite,connection_id,room_name].filter(Boolean).length!==1)throw failure('invalid_request');
   await this.store.init();
   if(invite){
-   const parsed=invitation(invite,this.origin),accepted=await this.request('/exchange',{method:'POST',body:{token:parsed.token,display_name:as_agent??'Cowork agent'},origin:parsed.origin,credential:undefined});
-   if(!secret.test(accepted.credential)||typeof accepted.room_id!=='string'||typeof accepted.agent_id!=='string')throw failure('invalid_central_response');
+   const parsed=invitation(invite,this.origin);let accepted;
+   try{accepted=await this.request('/exchange',{method:'POST',body:{token:parsed.token,display_name:as_agent??'Cowork agent'},origin:parsed.origin,credential:undefined});}
+   catch(error){if(!['invalid_invitation','expired','invalid_request','forbidden','rate_limited'].includes(error.code))error.exchange_uncertain=true;throw error;}
+   if(!accepted||!secret.test(accepted.credential)||typeof accepted.room_id!=='string'||typeof accepted.agent_id!=='string')throw failure('invalid_central_response',{exchange_uncertain:true});
    const row={version:1,connection_id:randomUUID(),origin:parsed.origin,...accepted,cursor:0,staged:[],consumed_files:[],watch_enabled:true};
-   await this.store.acquire(row.connection_id);
-   try{await this.store.save(row);this.row=row;}catch(error){await this.store.release(row.connection_id);throw failure('credential_storage_failed');}
+   let acquired=false;
+   try{await this.store.acquire(row.connection_id);acquired=true;await this.store.save(row);this.row=row;}
+   catch(error){if(acquired)await this.store.release(row.connection_id).catch(()=>{});throw failure('credential_storage_failed',{exchange_uncertain:true});}
   }else{
    if(room_name){const rows=(await this.store.list()).filter(row=>row.room_name===room_name);if(rows.length!==1)throw failure(rows.length?'connection_selection_required':'connection_not_found');connection_id=rows[0].connection_id;}
    await this.store.acquire(connection_id);
