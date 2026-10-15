@@ -192,7 +192,7 @@ export class CentralClient {
   if(invite){
    const parsed=invitation(invite,this.origin);let accepted;
    try{accepted=await this.request('/exchange',{method:'POST',body:{token:parsed.token,display_name:as_agent??'Cowork agent'},origin:parsed.origin,credential:undefined});}
-   catch(error){if(!['invalid_invitation','expired','invalid_request','forbidden','rate_limited'].includes(error.code))error.exchange_uncertain=true;throw error;}
+   catch(error){if(!['invalid_invitation','expired','invalid_request','forbidden'].includes(error.code))error.exchange_uncertain=true;throw error;}
    if(!accepted||!secret.test(accepted.credential)||typeof accepted.room_id!=='string'||typeof accepted.agent_id!=='string')throw failure('invalid_central_response',{exchange_uncertain:true});
    const row={version:1,connection_id:randomUUID(),origin:parsed.origin,...accepted,cursor:0,staged:[],consumed_files:[],watch_enabled:true};
    let acquired=false;

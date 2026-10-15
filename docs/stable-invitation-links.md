@@ -16,9 +16,11 @@ Use one exchange per deliberate invocation; backend single use guarantees one su
 
 ## Evidence so far
 
-Node22 local `npm run check` on both profiles passed: Personal100 pass/2 Windows-only skip, Moderator72 pass/2 Windows-only skip. Personal suite includes4 parser matrix tests covering both profiles and20 uncertainty tests covering both public entry tools/profiles. Existing schemas unchanged. Both builds passed and whitespace check passed. These are Linux/source/builder checks, not human acceptance or full backend E2E.
+Node22 local `npm run check` on both profiles passed: Personal108 pass/2 Windows-only skip, Moderator72 pass/2 Windows-only skip. Personal suite includes4 parser matrix tests covering both profiles and28 uncertainty tests covering both public entry tools/profiles. Existing schemas unchanged. Both builds passed and whitespace check passed. These are Linux/source/builder checks, not human acceptance or full backend E2E.
 
 Personal top-level and Harness runtime hashes match after build (build already copies the exact artifact). Existing adapter tests run in the suite; new invitation-specific packaged stdio + actual adapter + trusted-HTTPS backend joining/reconnect/name proof is still pending. Verify the post-build runtime through both paths; testing only top-level stdio is insufficient. `get_watch_status` already includes runtime VERSION and can provide safe identity evidence through the adapter; do not add a redundant API merely to expose it.
+
+Independent implementation review identified that a bare intermediary HTTP429 was still reported retryable during exchange. An in-memory regression reproduced four failing public-tool/profile cases before the fix; the rate-limit exception was removed for exchange only. Added HTML429/503 fixtures now pass across both tools/profiles; normal read/monitor retry suites remain passing. No live traffic was used.
 
 ## Remaining before acceptance/release
 
