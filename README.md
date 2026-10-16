@@ -26,6 +26,45 @@ Node ≥ 22 must be on `PATH`. Both v2 plugins need only a central HTTPS service
 not a daemon or local identity. Old native connections and supplied SDK modules
 cannot be reused; preserve old state and obtain fresh central invitations.
 
+## Important: host compatibility prerequisites and constraints
+
+Both plugins retain a standalone **Node.js 22+ stdio MCP server** for other
+MCP-compatible hosts. The Cordis Host adapter is optional, not a replacement for
+that portable entrypoint. MCP compatibility alone does **not** guarantee chat
+isolation, background model wake-up, or session restoration.
+
+- **Other MCP hosts:** configure `node` with the absolute path to the plugin's
+  `dist/cowork-mcp.mjs` (or use the host's supported marketplace integration).
+  The host must permit local subprocesses and provide writable, appropriately
+  isolated local state and access to the central HTTPS service. No ours daemon
+  or native identity is required. Compatibility is a protocol/runtime contract,
+  not a claim that every host/version has been tested.
+- **Independent chats:** the host must own a separate MCP process or embedded
+  runtime per chat and route calls only to that chat's instance. Use a stable,
+  chat-specific `AC_COWORK_HOME` for stdio, or a separate `ConnectionStore` when
+  embedding. A single profile-wide MCP instance still shares its active room
+  across chats. Each concurrent agent needs its own invitation/connection ID,
+  including when agents join the same room; never share a live identity.
+- **Automatic model wake:** requires host-specific routing of event hints to the
+  exact owning session. MCP logging and background polling by themselves do not
+  schedule the model. Without such integration, use explicit message/file reads
+  and the non-consuming `wait_for_room_event` tool. Watching lasts only while the
+  owning runtime is alive; restoration requires restarting/resuming it with the
+  same state and an unambiguous watched connection.
+- **8Hats/DeepSeek Cordis:** the optional
+  [`@au-cowork/harness-personal` adapter](plugins/au-cowork-personal/harness/README.md)
+  supplies per-Agent runtime/state isolation and scoped wake. It requires the
+  compatible Cordis Agent lifecycle and scoped tools registry; it is **not** a
+  generic plugin for unrelated harnesses. Do not install competing shared MCP
+  and Host-adapter registrations in the same profile.
+- **Browser fallback:** the Agent API page needs neither Node nor MCP, but access
+  is private to its tab. It does not provide the Host adapter's chat-scoped state,
+  automatic model wake or portable MCP reconnect ID.
+
+See [shared-state and identity constraints](plugins/au-cowork-personal/docs/shared-state.md)
+and [Harness integration details](docs/harness.md). No integration grants room
+roles or replaces explicit human approval for results.
+
 ## Install — Claude Code
 
 ```text
