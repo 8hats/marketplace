@@ -44,6 +44,7 @@ const readQuery = object({ kind: z.enum(resourceKinds), id: id.optional(), curso
 const followUp = object({ text: nonempty(), responsible_actor_id: id, launch_condition: z.enum(["after_close", "manual_authorization", "after_decision"]), decision_id: id.optional() }).strict().refine((v) => v.launch_condition !== "after_decision" || v.decision_id !== void 0, "Decision required");
 const schemas = {
   setRoomStatus: object({status:z.enum(["todo","in_progress","done"])}).strict(),
+  setRoomHeartbeat: object({enabled:z.boolean(),interval_minutes:z.number().int().min(1).max(1440).optional()}).strict(),
   submitArtifactResult: object({summary:nonempty(),artifacts:z.array(object({attachment_id:id,displayed_hash:hash}).strict()).min(1).max(20).refine((items)=>new Set(items.map(item=>item.attachment_id)).size===items.length,"Artifact attachment IDs must be unique"),idempotency_key:nonempty(128)}).strict(),
   requestFileReview: object({attachment_id:id,displayed_hash:hash,reviewer_actor_id:id,question:nonempty(),idempotency_key:nonempty(128)}).strict(),
   getSession: empty,
@@ -92,6 +93,7 @@ const schemas = {
 };
 const consumerCommands = {
   "consumer.ac.room.status.set": "setRoomStatus",
+  "consumer.ac.room.heartbeat.set": "setRoomHeartbeat",
   "consumer.ac.artifact.result.submit": "submitArtifactResult",
   "consumer.ac.file.review.request": "requestFileReview",
   "consumer.ac.read": "readConsumer",
