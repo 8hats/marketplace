@@ -1,3 +1,9 @@
+## 2.0.9 — invitation + heartbeat candidate (unreleased)
+
+- Compose PR38 strict HTTPS instruction-link parsing and single-exchange uncertainty/storage safety with PR37 heartbeat pruning, Moderator-only heartbeat configuration and Done semantics.
+- Keep exchange body and public invitation schemas unchanged. Only fetch informational session state after admission credentials are saved and bound; its failure cannot turn successful admission into a retryable exchange.
+- Add cross-profile composition regressions for post-save session failure, saved-ID reconnect/restore, stale-heartbeat replay suppression and ordinary mail access during currency outages. Regenerate runtime from final source; no publication or installed availability is implied.
+
 ## 2.0.8 — room inactivity heartbeat and current Done semantics
 
 - Add the Moderator-only `ac_room_heartbeat_set` tool (`consumer.ac.room.heartbeat.set`): `enabled` plus optional `interval_minutes` 1–1440, strict schema without a room identifier. The server accepts it from the current Moderator-purpose agent or, in the app, the human room owner.
