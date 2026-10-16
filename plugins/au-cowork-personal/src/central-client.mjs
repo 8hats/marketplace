@@ -32,10 +32,26 @@ export function centralOrigin(value){
  return url.origin;
 }
 export function invitation(value,configured){
- let url;try{url=new URL(value);}catch{throw failure('invalid_invitation');}
- const origin=centralOrigin(url.origin),match=url.hash.match(/^#\/agent-invite\/([A-Za-z0-9_-]{43})$/);
- if(url.username||url.password||url.pathname!=='/'||url.search||!match||(configured&&origin!==centralOrigin(configured)))throw failure('invalid_invitation');
- return {origin,token:match[1]};
+ const invalid=()=>Object.assign(failure('invalid_invitation'),{input_format:true});
+ if(typeof value!=='string'||value.length>8192||/[\u0000-\u0020\u007f]/.test(value))throw invalid();
+ let url;try{url=new URL(value);}catch{throw invalid();}
+ if(url.protocol!=='https:'||url.username||url.password||url.search||(configured&&url.origin!==centralOrigin(configured)))throw invalid();
+ const canonical=url.pathname==='/'&&url.hash.match(/^#\/agent-invite\/([A-Za-z0-9_-]{43})$/);
+ if(canonical)return {origin:url.origin,token:canonical[1]};
+ if(url.pathname!=='/agent-instructions')throw invalid();
+ const fields=new URLSearchParams(url.hash.slice(1));
+ if([...fields.keys()].some(key=>!['token','invite','name'].includes(key))||['token','invite','name'].some(key=>fields.getAll(key).length>1)||fields.has('token')===fields.has('invite'))throw invalid();
+ let token=fields.get('token');
+ if(fields.has('invite')){
+  // ponytail: validate one historical nested canonical URL; never fetch or recurse.
+  if(/[\u0000-\u0020\u007f]/.test(fields.get('invite')))throw invalid();
+  let original;try{original=new URL(fields.get('invite'));}catch{throw invalid();}
+  const match=original.hash.match(/^#\/agent-invite\/([A-Za-z0-9_-]{43})$/);
+  if(original.origin!==url.origin||original.username||original.password||original.pathname!=='/'||original.search||!match)throw invalid();
+  token=match[1];
+ }
+ if(!secret.test(token??''))throw invalid();
+ return {origin:url.origin,token};
 }
 /** Current room status and, while Done, the room closure instruction from the central session. */
 export function roomDiscussion(room){
@@ -181,22 +197,26 @@ export class CentralClient {
   await this.store.init();
   let session;
   if(invite){
-   const parsed=invitation(invite,this.origin),accepted=await this.request('/exchange',{method:'POST',body:{token:parsed.token,display_name:as_agent??'Cowork agent'},origin:parsed.origin,credential:undefined});
-   if(!secret.test(accepted.credential)||typeof accepted.room_id!=='string'||typeof accepted.agent_id!=='string')throw failure('invalid_central_response');
+   const parsed=invitation(invite,this.origin);let accepted;
+   try{accepted=await this.request('/exchange',{method:'POST',body:{token:parsed.token,display_name:as_agent??'Cowork agent'},origin:parsed.origin,credential:undefined});}
+   catch(error){if(!['invalid_invitation','expired','invalid_request','forbidden'].includes(error.code))error.exchange_uncertain=true;throw error;}
+   if(!accepted||!secret.test(accepted.credential)||typeof accepted.room_id!=='string'||typeof accepted.agent_id!=='string')throw failure('invalid_central_response',{exchange_uncertain:true});
    const row={version:1,connection_id:randomUUID(),origin:parsed.origin,...accepted,cursor:0,staged:[],consumed_files:[],watch_enabled:true};
-   await this.store.acquire(row.connection_id);
-   try{await this.store.save(row);this.row=row;}catch(error){await this.store.release(row.connection_id);throw failure('credential_storage_failed');}
-   // Admission already succeeded; the current room discussion state is informative only.
+   let acquired=false;
+   try{await this.store.acquire(row.connection_id);acquired=true;await this.store.save(row);this.row=row;}
+   catch(error){if(acquired)await this.store.release(row.connection_id).catch(()=>{});throw failure('credential_storage_failed',{exchange_uncertain:true});}
+   // Admission and credential persistence already succeeded; session is informative only.
    session=await this.request('/session').catch(()=>undefined);
   }else{
    if(room_name){const rows=(await this.store.list()).filter(row=>row.room_name===room_name);if(rows.length!==1)throw failure(rows.length?'connection_selection_required':'connection_not_found');connection_id=rows[0].connection_id;}
    await this.store.acquire(connection_id);
    try{const row=await this.store.load(connection_id);if(row.rotation_pending)throw failure('credential_rotation_uncertain');if(this.origin&&row.origin!==this.origin)throw failure('central_origin_mismatch');if(!restoring)session=await this.request('/session',{origin:row.origin,credential:row.credential});if(row.watch_enabled!==true){row.watch_enabled=true;await this.store.save(row);}this.row=row;}catch(error){await this.store.release(connection_id);throw error;}
   }
-  this.restoreError=null;this.startMonitor();
-  // Catch-up already staged on disk must wake the host again after restart, except superseded heartbeats.
+  const pendingHeartbeats=new Set(this.row.staged.filter(isHeartbeat).map(event=>event.event_id));
+  this.restoreError=null;this.startMonitor(pendingHeartbeats);
+  // Share pending hints with catch-up so either path may notify, but never both.
   const current=await this.pruneHeartbeats(session);
-  for(const event of this.row.staged)if(current||!isHeartbeat(event))this.wake(event);
+  for(const event of this.row.staged)if(!isHeartbeat(event)||(current&&pendingHeartbeats.delete(event.event_id)))this.wake(event);
   return {...this.publicRow(),...roomDiscussion(session?.room),monitoring_instructions:'Watching is durable across process restarts with the same state directory. Read ac_messages and ac_files; wait_for_room_event does not consume mail. Explicit disconnect stops watching.'};
  }
  async disconnect({preserveWatch=false}={}){
@@ -240,7 +260,8 @@ export class CentralClient {
    await this.update(row=>{row.credential=renewed.credential;row.credential_id=renewed.credential_id;row.expires_at=renewed.expires_at;row.rotation_pending=false;});
   }catch{throw failure('credential_rotation_uncertain');}
  }
- startMonitor(){
+ startMonitor(pendingHeartbeats=new Set(this.row.staged.filter(isHeartbeat).map(event=>event.event_id))){
+  const connection=this.row.connection_id;
   this.monitor=new AbortController();const signal=this.monitor.signal;this.monitorState='running';this.monitorFailures=0;this.malformedFailures=0;this.nextRetryMs=0;this.lastSuccessAt=null;this.monitorDiagnostic=null;
   this.work=(async()=>{
    while(!signal.aborted&&this.row){
@@ -264,8 +285,16 @@ export class CentralClient {
      await this.reconcileFiles();
      this.monitorFailures=0;this.malformedFailures=0;this.nextRetryMs=0;this.lastSuccessAt=new Date().toISOString();this.monitorState='running';
      // Status, policy or discussion may have changed while staging and reconciling files.
-     const current=fresh.some(isHeartbeat)?await this.pruneHeartbeats():true;
-     for(const event of fresh)if((current||!isHeartbeat(event))&&this.row.staged.some(staged=>staged.event_id===event.event_id))this.wake(event);
+     for(const event of fresh)if(isHeartbeat(event))pendingHeartbeats.add(event.event_id);
+     for(const id of pendingHeartbeats)if(!this.row.staged.some(event=>event.event_id===id))pendingHeartbeats.delete(id);
+     // Retry a suppressed hint on the next successful long poll, even an empty page.
+     const current=pendingHeartbeats.size?await this.pruneHeartbeats():false;
+     if(signal.aborted||this.monitor?.signal!==signal||this.row?.connection_id!==connection)break;
+     for(const event of fresh)if(!isHeartbeat(event)&&this.row.staged.some(staged=>staged.event_id===event.event_id))this.wake(event);
+     if(current)for(const event of this.row?.staged??[]){
+      if(signal.aborted||this.monitor?.signal!==signal||this.row?.connection_id!==connection)break;
+      if(isHeartbeat(event)&&pendingHeartbeats.delete(event.event_id))this.wake(event);
+     }
     }catch(error){
      if(signal.aborted)break;
      this.monitorDiagnostic=error.diagnostic??{endpoint:'/monitor',http_status:null,content_type:null,reason:/^[a-z_]{1,64}$/.test(error.code??'')?error.code:'state_storage_failed',timestamp:new Date().toISOString()};

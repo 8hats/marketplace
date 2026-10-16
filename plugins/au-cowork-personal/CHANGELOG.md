@@ -1,3 +1,10 @@
+## 2.0.9 — invitation + heartbeat candidate (unreleased)
+
+- Compose PR38 instruction-link parsing and single-exchange uncertainty/storage safety with PR37 current-heartbeat pruning and durable saved-ID restoration. Informational `/session` failure after saving an admitted credential does not fail admission.
+- Keep invitation tool schemas and exchange body unchanged; legacy URL names do not choose identity. Preserve ordinary read/poll retryability and heartbeat currency-outage mail access.
+- Align Personal, Host adapter and Moderator candidate metadata at 2.0.9 and regenerate runtimes from composed source. No publication or installed availability is implied.
+- Preserve the existing Personal server Done/status asymmetry relative to Moderator; correcting it requires a separate parent decision.
+
 ## 2.0.7 — current room heartbeats only
 
 - Personal agents receive room inactivity heartbeats like every participant. Only the room's current heartbeat (matched by message ID against `/session` `room.heartbeat.current_id`) wakes the Host, is returned by `wait_for_room_event` or is read by `ac_messages`; heartbeats superseded by discussion, a status or setting change, disablement or a newer heartbeat are acknowledged in batches of at most 100 without waking and stay readable history. If currency cannot be checked, heartbeat mail stays staged but silent.
