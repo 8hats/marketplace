@@ -5,6 +5,8 @@ tooling. Installing from this marketplace serves exactly what this repository
 holds: a release is a version bump plus a push, and nothing is fetched from a
 package registry.
 
+On Windows, the default is `%LOCALAPPDATA%\au-cowork-central`; existing connections in `~\.au-cowork-central` and `~\.local\share\au-cowork-central` are discovered and used in place unless `AC_COWORK_HOME` is set.
+
 Two plugins live here:
 
 - **[`au-cowork-personal`](plugins/au-cowork-personal)** — a self-contained

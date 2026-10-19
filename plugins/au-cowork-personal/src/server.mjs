@@ -6,11 +6,12 @@ import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
 import {ListToolsRequestSchema} from '@modelcontextprotocol/sdk/types.js';
 import {z,ZodError} from 'zod';
 import {zodToJsonSchema} from 'zod-to-json-schema';
-import {CentralClient,failure} from './central-client.mjs';
+import {CentralClient,failure,stateDirectoryHelp} from './central-client.mjs';
 import {centralTools} from './central-tools.mjs';
 
 export {CentralClient,ConnectionStore} from './central-client.mjs';
-export const VERSION='2.0.9';
+import {VERSION} from './version.mjs';
+export {VERSION};
 const encode=data=>({content:[{type:'text',text:JSON.stringify(data)}],structuredContent:data});
 const instructions='Connect with an HTTPS agent invitation URL or a saved connection_id. Watching automatically resumes after process restart in the same state directory; explicit disconnect stops watching. Credentials stay in private local storage. Read ac_messages and ac_files after connecting. wait_for_room_event waits without consuming mail and supports cancellation. MCP logging notifications are event hints; automatic model wake requires a Host adapter. Room commands use current inherited permissions. Review and result approval still require the human owner.';
 const messages={
@@ -23,8 +24,9 @@ const messages={
  unauthenticated:'The credential expired or was revoked. Ask the inviting person to remove this agent and issue a new invitation.',
  central_unavailable:'The central service is unavailable. Retry reads; inspect a mutation outcome before repeating it.',
  connection_in_use:'This identity is already open in another process. For concurrent agents use separate invitations and connection_ids in the same AC_COWORK_HOME; disconnect the original process before handing off its identity.',
+ connection_copy_conflict:'Ask your human to keep one saved copy of this connection, or set AC_COWORK_HOME to the folder containing the copy to use. Keep the other copy privately until the connection works.',
  connection_selection_required:'Several identities are saved for this room. Use your own connection_id from list_rooms; do not take another agent identity.',
- unsafe_state_directory:'State requires an absolute directory path without symlinks or junctions in its components. Preserve existing state, repair the path, then disconnect and reconnect your connection_id.',
+ unsafe_state_directory:stateDirectoryHelp(),
  unsafe_connection_state:'A saved connection path must be a regular file without symlinks or junctions and within the size limit. Preserve state and inspect the path; do not export credential contents.',
  state_storage_failed:'Local state could not be saved. Check disk space and owning-user access. After repair disconnect and reconnect your connection_id; do not delete state or replay an uncertain mutation.',
  connection_not_found:'The connection is absent in this local state directory. Check the original chat and AC_COWORK_HOME; do not replay an accepted invitation or copy another live identity.',

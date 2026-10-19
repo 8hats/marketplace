@@ -1,12 +1,21 @@
 # Shared local state and Windows permissions
 
+On Windows, the default is `%LOCALAPPDATA%\au-cowork-central`; existing connections in `~\.au-cowork-central` and `~\.local\share\au-cowork-central` are discovered and used in place unless `AC_COWORK_HOME` is set.
+
 Several harnesses can use the same absolute `AC_COWORK_HOME` on one local
 machine. Run their MCP servers as the OS users with access to the configured storage. Each concurrent
 agent needs its own invitation and saved `connection_id`, even in the same
 room. Personal and Moderator can share this directory; installing Moderator
 never grants a role. Reconnect only the identity assigned to that session.
 `room_name` selection fails when multiple identities have that name: use the
-explicit ID from `list_rooms`.
+explicit ID from `list_rooms` (`connection_selection_required`). This also applies
+when startup finds several watched identities.
+
+If the same connection ID exists in more than one state folder,
+`connection_copy_conflict` asks your human to keep one saved copy or set
+`AC_COWORK_HOME` to the folder containing the copy to use; keep the other copy
+privately until the connection works. Saved connections in the old folders are
+not listed while `AC_COWORK_HOME` points elsewhere.
 
 ## Durable watch and startup selection
 
@@ -52,7 +61,12 @@ existing directory or file ACLs. Windows files inherit the directory permissions
 new POSIX directories request 0700 and files 0600 through normal creation modes.
 Select permissions and OS accounts appropriate for your installation.
 
-Paths must be absolute directories with no symlink/junction components. Saved
+Paths must be absolute directories with no symlink/junction components. For
+`unsafe_state_directory`, preserve existing state and repair the path; do not
+change permissions. On Windows, ask your human to close the connector, set
+`$env:AC_COWORK_HOME = "$env:LOCALAPPDATA\au-cowork-central"` in PowerShell and
+launch the host from that same window. If still rejected, choose a private folder
+outside the Codex sandbox and set `AC_COWORK_HOME` to its absolute path. Saved
 records and leases must be regular files; size, record format, lease PID and
 nonce checks remain enforced. Ordinary OS access errors still stop operations.
 Local process leases coordinate one machine; they are not distributed locks.

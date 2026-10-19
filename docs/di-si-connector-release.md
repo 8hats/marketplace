@@ -1,3 +1,5 @@
+Current candidate: 2.1.0 adds connector identity headers and Windows state discovery; the 2.0.9 release record below is historical.
+
 # Invitation + heartbeat connector candidate — 2026-10-16
 
 ## Ownership and exact sources
