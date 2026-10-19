@@ -6,12 +6,16 @@ import path from 'node:path';
 import {homedir} from 'node:os';
 import {setTimeout as delay} from 'node:timers/promises';
 
-export const stateDirectoryHelp = 'Ask your human to close the connector, open PowerShell, run $env:AC_COWORK_HOME = "$env:LOCALAPPDATA\\au-cowork-central", then launch the host from that same window. If still rejected, ask them to choose a private folder outside the Codex sandbox and set AC_COWORK_HOME to its absolute path. Keep existing permissions and old connection files.';
-export const failure=(code,details={})=>Object.assign(new Error(code==='unsafe_state_directory'?stateDirectoryHelp:code),{code,...details});
+export function stateDirectoryHelp({platform=process.platform}={}) {
+ const cause='State requires an absolute directory path without symlinks or junctions in its components. Preserve existing state, repair the path, then disconnect and reconnect your connection_id. Do not change permissions.';
+ const windows=' On Windows: ask your human to close the connector, open PowerShell, run $env:AC_COWORK_HOME = "$env:LOCALAPPDATA\\au-cowork-central", then launch the host from that same window. If still rejected, ask them to choose a private folder outside the Codex sandbox and set AC_COWORK_HOME to its absolute path. Keep existing permissions and old connection files.';
+ return cause+(platform==='win32'?windows:'')+' Saved connections in the old folders are not listed while AC_COWORK_HOME points elsewhere.';
+}
+export const failure=(code,details={},options={})=>Object.assign(new Error(code==='unsafe_state_directory'?stateDirectoryHelp(options):code),{code,...details});
 export function stateDirectories({platform=process.platform,env=process.env,home=homedir()}={}) {
  const paths=platform==='win32'?path.win32:path;
  if(env.AC_COWORK_HOME!==undefined) {
-  if(!paths.isAbsolute(env.AC_COWORK_HOME))throw failure('unsafe_state_directory');
+  if(!paths.isAbsolute(env.AC_COWORK_HOME))throw failure('unsafe_state_directory',{},{platform});
   return {root:env.AC_COWORK_HOME,legacy:[]};
  }
  return platform==='win32'
@@ -85,7 +89,7 @@ export class ConnectionStore {
    if(store!==this){try{await fs.lstat(store.root);}catch(error){if(error.code==='ENOENT')continue;throw error;}await store.init();}
    try{await store.regularFile(store.file(id),'unsafe_connection_state');stores.push(store);}catch(error){if(error.code!=='ENOENT')throw error;}
   }
-  if(stores.length>1)throw failure('connection_selection_required');
+  if(stores.length>1)throw failure('connection_copy_conflict');
   const selected=stores[0]??this;this.locations.set(id,selected);return selected;
  }
  async init(){

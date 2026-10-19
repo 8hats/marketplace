@@ -28,7 +28,7 @@ test('legacy state keeps original files and leases; duplicate identities and sym
   await store.save({...row,cursor:2});assert.equal((await old.load(row.connection_id)).cursor,2);await store.release(row.connection_id);
   assert.deepEqual(await fs.readdir(current),[]);
   await new ConnectionStore(current).save(row);
-  await assert.rejects(()=>new ConnectionStore(current,{legacyRoots:[old.root]}).list(),{code:'connection_selection_required'});
+  await assert.rejects(()=>new ConnectionStore(current,{legacyRoots:[old.root]}).list(),{code:'connection_copy_conflict'});
   const link=path.join(root,'linked');await fs.symlink(old.root,link,process.platform==='win32'?'junction':'dir');
   await assert.rejects(()=>new ConnectionStore(path.join(root,'other'),{legacyRoots:[link]}).list(),{code:'unsafe_state_directory'});
  }finally{await fs.rm(root,{recursive:true,force:true});}
@@ -61,7 +61,7 @@ test('unsafe directory MCP error names the human fix and never consumes invitati
   runtime=await createRuntime({client,injectedServer:{registerTool:(name,_,handler)=>handlers.set(name,handler)}});
   const result=await handlers.get('connect_to_room')({invite:origin+'/#/agent-invite/'+token});
   assert.equal(result.structuredContent.error.code,'unsafe_state_directory');
-  assert.equal(result.structuredContent.error.message,stateDirectoryHelp);assert.equal(result.structuredContent.error.retryable,false);assert.equal(exchanges,0);
+  assert.equal(result.structuredContent.error.message,stateDirectoryHelp());assert.equal(result.structuredContent.error.retryable,false);assert.equal(exchanges,0);
  }finally{await runtime?.shutdown();await fs.rm(root,{recursive:true,force:true});}
 });
 test('unsafe legacy directory is rejected before redeeming a fresh invitation',async()=>{
@@ -92,13 +92,46 @@ test('plugin, lock roots, manifests and optional Host version agree with version
  assert.deepEqual(await fs.readFile(new URL('../src/central-client.mjs',import.meta.url)),await fs.readFile(new URL('../../au-cowork-'+other+'/src/central-client.mjs',import.meta.url)));
 });
 test('duplicate saved connection MCP error explains how the human can select a copy',async()=>{
- const handlers=new Map(),root=await fs.mkdtemp(path.join(tmpdir(),'p17-selection-'));
- const client=new CentralClient({store:new ConnectionStore(root)});
- client.connect=async()=>{throw Object.assign(Error(),{code:'connection_selection_required'});};
+ const handlers=new Map(),root=await fs.mkdtemp(path.join(tmpdir(),'p17-copy-conflict-'));
+ const row={version:1,connection_id:'11111111-1111-1111-1111-111111111111',credential:'b'.repeat(43),origin,cursor:0,staged:[],consumed_files:[]};
+ const current=path.join(root,'new'),old=path.join(root,'old');
+ await new ConnectionStore(current).save(row);await new ConnectionStore(old).save(row);
+ const client=new CentralClient({store:new ConnectionStore(current,{legacyRoots:[old]})});
  const runtime=await createRuntime({client,injectedServer:{registerTool:(name,_,handler)=>handlers.set(name,handler)}});
  try{
   const result=await handlers.get('connect_to_room')({connection_id:'11111111-1111-1111-1111-111111111111'});
-  assert.equal(result.structuredContent.error.code,'connection_selection_required');
+  assert.equal(result.structuredContent.error.code,'connection_copy_conflict');
   assert.equal(result.structuredContent.error.message,'Ask your human to keep one saved copy of this connection, or set AC_COWORK_HOME to the folder containing the copy to use. Keep the other copy privately until the connection works.');
  }finally{await runtime.shutdown();await fs.rm(root,{recursive:true,force:true});}
+});
+
+// Round 2 contract: unsafe-path advice must identify the cause on every platform,
+// reserve PowerShell for Windows, and explain the discovery effect of an override.
+test('unsafe path help preserves the cause and limits PowerShell advice to Windows',()=>{
+ for(const platform of ['linux','darwin','win32']){
+  const message=stateDirectoryHelp({platform});
+  assert.match(message,/absolute directory path without symlinks or junctions/);
+  assert.match(message,/Preserve existing state, repair the path/);
+  assert.match(message,/Do not change permissions/);
+  assert.match(message,/Saved connections in the old folders are not listed while AC_COWORK_HOME points elsewhere/);
+  if(platform==='win32')assert.match(message,/On Windows: ask your human/);
+  assert.equal(message.includes('PowerShell'),platform==='win32');
+  assert.equal(message.includes('$env:AC_COWORK_HOME = "$env:LOCALAPPDATA\\au-cowork-central"'),platform==='win32');
+  assert.throws(()=>stateDirectories({platform,env:{AC_COWORK_HOME:'relative'}}),{code:'unsafe_state_directory',message});
+ }
+});
+// Round 2 contract: distinct saved identities require selection, not deleting copies.
+test('watched and same-room identities retain connection selection guidance',async()=>{
+ const rows=['11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222'].map(connection_id=>({connection_id,room_name:'Shared room',watch_enabled:true}));
+ const client=new CentralClient({store:{init:async()=>{},list:async()=>rows},fetchFn:async()=>{assert.fail('ambiguous identity must not contact the service');}});
+ const handlers=new Map(),runtime=await createRuntime({client,injectedServer:{registerTool:(name,_,handler)=>handlers.set(name,handler)}});
+ try{
+  assert.equal(client.restoreError.code,'connection_selection_required');
+  await assert.rejects(()=>client.connect({room_name:'Shared room'}),{code:'connection_selection_required'});
+  const result=await handlers.get('get_room_status')({});
+  assert.equal(result.structuredContent.error.code,'connection_selection_required');
+  assert.equal(result.structuredContent.error.message,'Several identities are saved for this room. Use your own connection_id from list_rooms; do not take another agent identity.');
+  assert.equal(result.structuredContent.error.retryable,false);
+  assert.equal(client.row,null);
+ }finally{await runtime.shutdown();}
 });

@@ -97,7 +97,7 @@ test('permanent storage errors are actionable through MCP and never retryable',a
  try{
   const result=await handlers.get('connect_to_room')({connection_id:ids[0]});
   assert.equal(result.structuredContent.error.code,'unsafe_state_directory');
-  assert.equal(result.structuredContent.error.retryable,false);assert.match(result.structuredContent.error.message,/Ask your human.*AC_COWORK_HOME.*LOCALAPPDATA/);
+  assert.equal(result.structuredContent.error.retryable,false);assert.match(result.structuredContent.error.message,/absolute directory path without symlinks or junctions.*Preserve existing state.*Do not change permissions/);
  }finally{await runtime.shutdown();}
 });
 
@@ -137,7 +137,7 @@ test('actual unsafe root during disconnect reports unavailable, retains lease, a
   const status=(await handlers.get('get_room_status')({})).structuredContent.data;
   assert.equal(status.monitoring,'unsafe_state_directory');assert.equal(status.can_read,false);assert.equal(status.can_send,false);
   const wake=(await handlers.get('wait_for_room_event')({})).structuredContent;
-  assert.equal(wake.status,'unavailable');assert.match(wake.message,/Ask your human.*AC_COWORK_HOME.*LOCALAPPDATA/);
+  assert.equal(wake.status,'unavailable');assert.match(wake.message,/absolute directory path without symlinks or junctions.*Preserve existing state.*Do not change permissions/);
   await assert.rejects(()=>client.request('/session'),{code:'unsafe_state_directory'});
   await change(false);await client.disconnect();assert.equal(store.leases.size,0);
   await client.connect({connection_id:ids[0]});assert.equal(client.row.credential,row(ids[0]).credential);

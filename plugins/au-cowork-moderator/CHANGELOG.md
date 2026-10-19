@@ -4,7 +4,7 @@
 - Default Windows state to `%LOCALAPPDATA%\au-cowork-central`, retain `AC_COWORK_HOME` priority and discover legacy connections with their original files and leases. Reject duplicate copies and unsafe paths without changing permissions.
 - Explain the human actions for unsafe state directories and duplicate connection selection. Rebuild the standalone runtime from source.
 
-## 2.0.9 — invitation + heartbeat candidate (unreleased)
+## 2.0.9 — invitation + heartbeat candidate
 
 - Compose PR38 strict HTTPS instruction-link parsing and single-exchange uncertainty/storage safety with PR37 heartbeat pruning, Moderator-only heartbeat configuration and Done semantics.
 - Keep exchange body and public invitation schemas unchanged. Only fetch informational session state after admission credentials are saved and bound; its failure cannot turn successful admission into a retryable exchange.
