@@ -1,3 +1,4 @@
+import {NAME,VERSION} from './version.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {constants,lstatSync} from 'node:fs';
 import fs from 'node:fs/promises';
@@ -5,7 +6,18 @@ import path from 'node:path';
 import {homedir} from 'node:os';
 import {setTimeout as delay} from 'node:timers/promises';
 
-export const failure=(code,details={})=>Object.assign(new Error(code),{code,...details});
+export const stateDirectoryHelp = 'Ask your human to close the connector, open PowerShell, run $env:AC_COWORK_HOME = "$env:LOCALAPPDATA\\au-cowork-central", then launch the host from that same window. If still rejected, ask them to choose a private folder outside the Codex sandbox and set AC_COWORK_HOME to its absolute path. Keep existing permissions and old connection files.';
+export const failure=(code,details={})=>Object.assign(new Error(code==='unsafe_state_directory'?stateDirectoryHelp:code),{code,...details});
+export function stateDirectories({platform=process.platform,env=process.env,home=homedir()}={}) {
+ const paths=platform==='win32'?path.win32:path;
+ if(env.AC_COWORK_HOME!==undefined) {
+  if(!paths.isAbsolute(env.AC_COWORK_HOME))throw failure('unsafe_state_directory');
+  return {root:env.AC_COWORK_HOME,legacy:[]};
+ }
+ return platform==='win32'
+  ? {root:paths.join(env.LOCALAPPDATA||paths.join(home,'AppData','Local'),'au-cowork-central'),legacy:[paths.join(home,'.au-cowork-central'),paths.join(home,'.local','share','au-cowork-central')]}
+  : {root:paths.join(home,'.local','share','au-cowork-central'),legacy:[]};
+}
 function cancelBestEffort(stream){try{void stream?.cancel().catch(()=>{});}catch{}}
 const transientStatus=status=>[408,425,429].includes(status)||(status>=500&&status<=599&&![501,505].includes(status));
 export function retryAfterMillis(value,now=Date.now()){
@@ -60,7 +72,22 @@ export function roomDiscussion(room){
 }
 const isHeartbeat=event=>event.kind==='roomHeartbeatNotice';
 export class ConnectionStore {
- constructor(root=process.env.AC_COWORK_HOME??path.join(homedir(),'.local','share','au-cowork-central')){if(!path.isAbsolute(root))throw failure('unsafe_state_directory');this.root=root;this.leases=new Map();}
+ constructor(root, {legacyRoots}={}){
+  const defaults=root===undefined?stateDirectories():{root,legacy:[]};
+  if(!path.isAbsolute(defaults.root))throw failure('unsafe_state_directory');
+  this.root=defaults.root;this.leases=new Map();this.legacy=(legacyRoots??defaults.legacy).map(value=>new ConnectionStore(value));this.locations=new Map();
+ }
+ // Keep legacy records and their leases together: no copy, ACL change or new identity.
+ async location(id){
+  if(this.locations.has(id))return this.locations.get(id);
+  const stores=[];
+  for(const store of [this,...this.legacy]){
+   if(store!==this){try{await fs.lstat(store.root);}catch(error){if(error.code==='ENOENT')continue;throw error;}await store.init();}
+   try{await store.regularFile(store.file(id),'unsafe_connection_state');stores.push(store);}catch(error){if(error.code!=='ENOENT')throw error;}
+  }
+  if(stores.length>1)throw failure('connection_selection_required');
+  const selected=stores[0]??this;this.locations.set(id,selected);return selected;
+ }
  async init(){
   // Isolation and access permissions are managed by the operator.
   // Validate existing components before mkdir so a link cannot redirect creation.
@@ -72,12 +99,19 @@ export class ConnectionStore {
     if(!info.isDirectory()||info.isSymbolicLink())throw failure('unsafe_state_directory');
    }
   };
-  await check();await fs.mkdir(this.root,{recursive:true,mode:0o700});await check();
+  await check();
+  // Validate legacy roots during preflight, before an invitation can be exchanged.
+  // A later acquire/load must never discover a known unsafe legacy path after admission.
+  for(const store of this.legacy){
+   try{await fs.lstat(store.root);}catch(error){if(error.code==='ENOENT')continue;throw error;}
+   await store.init();
+  }
+  await fs.mkdir(this.root,{recursive:true,mode:0o700});await check();
  }
  async regularFile(filename,code){const info=await fs.lstat(filename);if(!info.isFile()||info.isSymbolicLink())throw failure(code);}
  file(id){if(!uuid.test(id))throw failure('connection_not_found');return path.join(this.root,id+'.json');}
  async load(id){
-  await this.init();let handle;
+  await this.init();const store=await this.location(id);if(store!==this)return store.load(id);let handle;
   try{
    await this.regularFile(this.file(id),'unsafe_connection_state');
    handle=await fs.open(this.file(id),constants.O_RDONLY|constants.O_NOFOLLOW);
@@ -88,7 +122,7 @@ export class ConnectionStore {
   }catch(error){if(error.code==='ENOENT')throw failure('connection_not_found');throw error;}finally{await handle?.close();}
  }
  async save(row){
-  await this.init();const target=this.file(row.connection_id),temporary=target+'.'+randomUUID()+'.tmp';
+  await this.init();const store=await this.location(row.connection_id);if(store!==this)return store.save(row);const target=this.file(row.connection_id),temporary=target+'.'+randomUUID()+'.tmp';
   // Validate an existing record before replacing it.
   try{await this.load(row.connection_id);}catch(error){if(error.code!=='connection_not_found')throw error;}
   const handle=await fs.open(temporary,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);
@@ -96,9 +130,16 @@ export class ConnectionStore {
   try{await fs.rename(temporary,target);if(process.platform!=='win32'){const directory=await fs.open(this.root,constants.O_RDONLY);try{await directory.sync();}finally{await directory.close();}}}
   catch(error){await fs.unlink(temporary).catch(()=>{});throw error;}
  }
- async list(){await this.init();const rows=[];for(const name of await fs.readdir(this.root))if(name.endsWith('.json')&&uuid.test(name.slice(0,-5)))rows.push(await this.load(name.slice(0,-5)));return rows;}
+ async list(){
+  await this.init();const ids=new Set();
+  for(const store of [this,...this.legacy]){
+   try{await fs.lstat(store.root);}catch(error){if(error.code==='ENOENT')continue;throw error;}
+   await store.init();for(const name of await fs.readdir(store.root))if(name.endsWith('.json')&&uuid.test(name.slice(0,-5)))ids.add(name.slice(0,-5));
+  }
+  const rows=[];for(const id of ids)rows.push(await this.load(id));return rows;
+ }
  async acquire(id){
-  await this.init();const filename=this.file(id)+'.lease',lease={pid:process.pid,nonce:randomUUID()};
+  await this.init();const store=await this.location(id);if(store!==this)return store.acquire(id);const filename=this.file(id)+'.lease',lease={pid:process.pid,nonce:randomUUID()};
   let handle;
   try{handle=await fs.open(filename,constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY|constants.O_NOFOLLOW,0o600);}
   catch(error){
@@ -121,7 +162,7 @@ export class ConnectionStore {
   this.leases.set(id,lease.nonce);
  }
  async release(id){
-  const nonce=this.leases.get(id);if(!nonce)return;
+  const store=await this.location(id);if(store!==this)return store.release(id);const nonce=this.leases.get(id);if(!nonce)return;
   const filename=this.file(id)+'.lease';
   await this.init();await this.regularFile(filename,'connection_lease_changed');
   const reader=await fs.open(filename,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
@@ -148,7 +189,7 @@ export class CentralClient {
   const timeout=AbortSignal.timeout(route.startsWith('/events')?35000:30000),combined=signal?AbortSignal.any([timeout,signal]):timeout;
   let response;
   const fail=(code,reason,details={})=>failure(code,{diagnostic:requestDiagnostic(route,response,reason),...details});
-  try{response=await this.fetchFn(origin+'/api/v1/agent'+route,{method,redirect:'error',signal:combined,headers:{...(credential?{authorization:'Bearer '+credential}:{}),...(body!==undefined?{'content-type':'application/json'}:{}),...headers},...(body!==undefined?{body:JSON.stringify(body)}:bytes!==undefined?{body:bytes}:{})});}
+  try{response=await this.fetchFn(origin+'/api/v1/agent'+route,{method,redirect:'error',signal:combined,headers:{'X-Cowork-Connector':NAME+'/'+VERSION,...(credential?{authorization:'Bearer '+credential}:{}),...(body!==undefined?{'content-type':'application/json'}:{}),...headers},...(body!==undefined?{body:JSON.stringify(body)}:bytes!==undefined?{body:bytes}:{})});}
   catch(error){if(signal?.aborted)throw fail('cancelled','cancelled');throw fail('central_unavailable','network_error');}
   if(route.startsWith('/events'))this.eventResponseFacts=responseFacts(route,response);
   if(signal?.aborted){cancelBestEffort(response.body);throw fail('cancelled','cancelled');}

@@ -1,3 +1,9 @@
+## 2.1.0 — connector identity and Windows state discovery
+
+- Send this profile's name and version in `X-Cowork-Connector` on every central request, including invitation exchange.
+- Default Windows state to `%LOCALAPPDATA%\au-cowork-central`, retain `AC_COWORK_HOME` priority and discover legacy connections with their original files and leases. Reject duplicate copies and unsafe paths without changing permissions.
+- Explain the human actions for unsafe state directories and duplicate connection selection. Rebuild the standalone runtime from source.
+
 ## 2.0.9 — invitation + heartbeat candidate (unreleased)
 
 - Compose PR38 strict HTTPS instruction-link parsing and single-exchange uncertainty/storage safety with PR37 heartbeat pruning, Moderator-only heartbeat configuration and Done semantics.
