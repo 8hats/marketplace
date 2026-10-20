@@ -85,8 +85,10 @@ Jitter spans 75–125% of the exponential base, with nominal jitter capped at
 30 seconds. Retry-After accepts integer seconds or an HTTP date, capped at
 60 seconds, and may extend the actual delay beyond nominal jitter. A valid event
 page resets failure/backoff and malformed-page counts. Malformed HTTP 200 JSON
-syntax, data envelopes or event-page/events-array shapes get three attempts total;
-transport interruptions do not reset this budget. Missing, invalid or backward
+syntax, data envelopes or event-page/events-array shapes, and non-JSON bodies on
+other non-401/403 statuses (proxy, captive or maintenance pages), retry
+indefinitely with jitter capped at 5 minutes; transport interruptions do not reset
+the malformed count. JSON application error codes stop. Missing, invalid or backward
 cursors and invalid event-sequence integrity stop immediately with no durable
 cursor or staged-inbox advance. Authorization, rotation and local storage/security
 failures also stop immediately.

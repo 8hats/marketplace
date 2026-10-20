@@ -1,3 +1,8 @@
+## 2.1.1 — the room watch never stops on a non-JSON or malformed response
+
+- A malformed HTTP 200 (for example an HTML maintenance or captive page) and a non-JSON body on any non-401/403 error status (for example a proxy HTML 404/400/413) no longer stop the watch. It retries indefinitely with jittered exponential backoff capped at 5 minutes (Retry-After floor unchanged), reports `state: reconnecting`, `live: false`, consecutive and malformed failure counts and a sanitized diagnostic, and returns to `running` with counts reset on the next valid page.
+- Authorization (401/403), cursor/sequence integrity, credential rotation, local storage failures and JSON application error codes still stop the watch. Mutations are still never retried automatically.
+
 ## 2.1.0 — connector identity and Windows state discovery
 
 - Send this profile's name and version in `X-Cowork-Connector` on every central request, including invitation exchange.

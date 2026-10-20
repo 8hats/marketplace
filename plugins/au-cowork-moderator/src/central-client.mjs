@@ -344,16 +344,20 @@ export class CentralClient {
      if(signal.aborted)break;
      this.monitorDiagnostic=error.diagnostic??{endpoint:'/monitor',http_status:null,content_type:null,reason:/^[a-z_]{1,64}$/.test(error.code??'')?error.code:'state_storage_failed',timestamp:new Date().toISOString()};
      this.monitorFailures=Math.min(Number.MAX_SAFE_INTEGER,this.monitorFailures+1);
-     // Successful-response syntax/envelope faults get three attempts; cursor
-     // integrity, authorization, rotation and local storage failures never retry.
-     const malformed=error.code==='invalid_central_response'&&['invalid_json','missing_data','invalid_event_page'].includes(error.diagnostic?.reason);
-     if(malformed)this.malformedFailures++;
+     // A malformed successful response, or a non-auth error status whose body is
+     // not JSON (a proxy, captive or maintenance page rather than the application),
+     // retries indefinitely with backoff up to 5 minutes while health reports not
+     // live. Cursor integrity, authorization, rotation, local storage failures and
+     // JSON application error codes still stop the watch.
+     const malformed=(error.code==='invalid_central_response'&&['invalid_json','missing_data','invalid_event_page'].includes(error.diagnostic?.reason))||(error.code==='central_http_error'&&error.diagnostic?.reason==='http_error');
+     if(malformed)this.malformedFailures=Math.min(Number.MAX_SAFE_INTEGER,this.malformedFailures+1);
      if(error.diagnostic?.reason==='http_auth'){this.stopMonitoring(error.diagnostic.http_status===401?'unauthenticated':'forbidden');break;}
      const transient=['central_unavailable','database_busy','rate_limited'].includes(error.code);
-     if(!transient&&(!malformed||this.malformedFailures>=3)){this.stopMonitoring(error.code);break;}
+     if(!transient&&!malformed){this.stopMonitoring(error.code);break;}
      if(this.monitorState!=='reconnecting')this.notify({status:'reconnecting',code:error.code});
-     this.monitorState='reconnecting';const backoff=Math.min(30000,500*2**Math.min(this.monitorFailures-1,6));
-     this.nextRetryMs=Math.max(Math.min(30000,Math.floor(backoff*(0.75+Math.random()*0.5))),Math.min(60000,Math.max(0,error.retry_after_ms??0)));
+     const cap=malformed?300000:30000;
+     this.monitorState='reconnecting';const backoff=Math.min(cap,500*2**Math.min(this.monitorFailures-1,10));
+     this.nextRetryMs=Math.max(Math.min(cap,Math.floor(backoff*(0.75+Math.random()*0.5))),Math.min(60000,Math.max(0,error.retry_after_ms??0)));
      try{await this.retryDelayFn(this.nextRetryMs,undefined,{signal});}catch{break;}
     }
    }
