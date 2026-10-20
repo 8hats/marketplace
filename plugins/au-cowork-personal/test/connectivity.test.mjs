@@ -209,32 +209,81 @@ test('503, 504, network and JSON 429 retry indefinitely with bounded jitter and 
  assert.equal(health(client).consecutive_failures,0);
 });
 
-for(const [text,reason] of [['<html>'+secret+'</html>','invalid_json'],[JSON.stringify({secret}),'missing_data']])test('malformed HTTP 200 '+reason+' stops at the third failure without advancing durable state',async t=>{
- let polls=0;const waits=[];
- const {client,store}=await fixture(t,{retryDelayFn:async ms=>waits.push(ms),fetchFn:async()=>{polls++;return syntheticResponse({text,headers:{'content-type':'application/json'}}).response;}});
- await client.restore();await client.work;
- assert.equal(polls,3);assert.equal(waits.length,2);assert.equal(client.monitorState,'invalid_central_response');
- const snapshot=health(client);assert.equal(snapshot.live,false);assert.equal(snapshot.malformed_failures,3);assert.equal(snapshot.consecutive_failures,3);assert.equal(snapshot.next_retry_ms,0);diagnostic(snapshot.diagnostic,{reason});
+// Before 2.1.1 a malformed successful page stopped the watch at the third
+// attempt. An HTML maintenance/captive page on HTTP 200 is not the application,
+// so the watch now keeps retrying (reported not live) until a valid page.
+for(const [text,reason] of [['<html>'+secret+'</html>','invalid_json'],[JSON.stringify({secret}),'missing_data'],[JSON.stringify({data:{secret}}),'invalid_event_page']])test('malformed HTTP 200 '+reason+' keeps retrying with backoff, reports unhealthy, and never advances durable state',async t=>{
+ let polls=0;const waits=[],snapshots=[];
+ const {client,store}=await fixture(t,{retryDelayFn:async ms=>{waits.push(ms);snapshots.push(health(client));},fetchFn:async(url,options)=>{
+  polls++;if(polls<=12)return syntheticResponse({text,headers:{'content-type':'application/json'}}).response;
+  if(polls===13)return json({events:[event],cursor:1});return hold(options);
+ }});
+ await client.restore();await until(()=>client.row.cursor===1);
+ assert.equal(waits.length,12);
+ for(let n=0;n<waits.length;n++){
+  const base=Math.min(300000,500*2**Math.min(n,10));
+  assert.ok(waits[n]>=Math.floor(base*.75)&&waits[n]<=Math.min(300000,Math.ceil(base*1.25)),String(waits[n]));
+  const snapshot=snapshots[n];assert.equal(snapshot.state,'reconnecting');assert.equal(snapshot.live,false);
+  assert.equal(snapshot.consecutive_failures,n+1);assert.equal(snapshot.malformed_failures,n+1);assert.equal(snapshot.next_retry_ms,waits[n]);
+  diagnostic(snapshot.diagnostic,{reason});
+ }
+ assert.ok(waits.at(-1)>30000);
+ assert.equal(client.monitorState,'running');assert.deepEqual((await store.load(id)).staged,[event]);
+ const snapshot=health(client);assert.equal(snapshot.live,true);assert.equal(snapshot.consecutive_failures,0);assert.equal(snapshot.malformed_failures,0);assert.equal(snapshot.next_retry_ms,0);
+});
+
+test('a malformed page never advances durable state while retrying',async t=>{
+ let polls=0;
+ const {client,store}=await fixture(t,{retryDelayFn:async()=>{},fetchFn:async(url,options)=>{polls++;return polls<=3?new Response('invalid'):hold(options);}});
+ await client.restore();await until(()=>polls===4);
+ assert.equal(client.monitorState,'reconnecting');assert.equal(health(client).live,false);assert.equal(health(client).malformed_failures,3);
  assert.equal((await store.load(id)).cursor,0);assert.deepEqual((await store.load(id)).staged,[]);
- const result=await client.wait(1000);assert.equal(result.status,'unavailable');assert.equal(result.code,'invalid_central_response');assert.deepEqual(result.monitor,snapshot);
+ const result=await client.wait(50);assert.equal(result.status,'timeout');assert.equal(result.monitor.live,false);
 });
 
-test('transport retries do not erase the malformed-page budget without a successful page',async t=>{
+test('an HTML error page during long-poll never stops the watch',async t=>{
+ let polls=0;const waits=[],snapshots=[];
+ const pages=[[200,'invalid_json'],[404,'http_error'],[502,'http_transient']];
+ const {client,store}=await fixture(t,{retryDelayFn:async ms=>{waits.push(ms);snapshots.push(health(client));},fetchFn:async(url,options)=>{
+  polls++;if(polls<=pages.length)return syntheticResponse({status:pages[polls-1][0],text:'<html>'+secret+'</html>'}).response;
+  if(polls===pages.length+1)return json({events:[event],cursor:1});return hold(options);
+ }});
+ await client.restore();await until(()=>client.row.cursor===1);
+ assert.equal(waits.length,pages.length);
+ for(let n=0;n<waits.length;n++){
+  assert.ok(waits[n]>0&&waits[n]<=300000);if(n)assert.ok(waits[n]>waits[n-1],'retry delay grows');
+  const snapshot=snapshots[n];assert.equal(snapshot.state,'reconnecting');assert.equal(snapshot.live,false);assert.equal(snapshot.consecutive_failures,n+1);
+  assert.equal(snapshot.malformed_failures,Math.min(n+1,2));diagnostic(snapshot.diagnostic,{status:pages[n][0],type:'text/html',reason:pages[n][1]});
+ }
+ assert.equal(client.monitorState,'running');assert.deepEqual((await store.load(id)).staged,[event]);
+ const snapshot=health(client);assert.equal(snapshot.live,true);assert.equal(snapshot.consecutive_failures,0);assert.equal(snapshot.malformed_failures,0);assert.equal(snapshot.next_retry_ms,0);
+ const result=await client.wait(1000);assert.equal(result.status,'event');assert.equal(result.monitor.live,true);
+});
+
+test('a JSON application 4xx error code on long-poll still stops the watch immediately',async t=>{
  let polls=0,retries=0;
- const {client}=await fixture(t,{retryDelayFn:async()=>{retries++;},fetchFn:async()=>{
-  polls++;if(polls===2)throw Error('synthetic outage');return new Response('invalid');
- }});
+ const {client}=await fixture(t,{retryDelayFn:async()=>{retries++;},fetchFn:async()=>{polls++;return new Response(JSON.stringify({error:{code:'room_deleted'}}),{status:404,headers:{'content-type':'application/json'}});}});
  await client.restore();await client.work;
- assert.equal(polls,4);assert.equal(retries,3);assert.equal(health(client).malformed_failures,3);assert.equal(health(client).consecutive_failures,4);assert.equal(client.monitorState,'invalid_central_response');
+ assert.equal(polls,1);assert.equal(retries,0);assert.equal(client.monitorState,'room_deleted');assert.equal(health(client).live,false);
 });
 
-test('a valid page resets the malformed-page budget before a later malformed streak',async t=>{
- let polls=0;const waits=[];
- const {client}=await fixture(t,{retryDelayFn:async ms=>waits.push(ms),fetchFn:async()=>{
-  polls++;return polls===3?json({events:[],cursor:0}):new Response('invalid');
+test('transport retries do not erase the malformed count without a successful page',async t=>{
+ let polls=0;const snapshots=[];
+ const {client}=await fixture(t,{retryDelayFn:async()=>{snapshots.push(health(client));},fetchFn:async(url,options)=>{
+  polls++;if(polls===2)throw Error('synthetic outage');if(polls>5)return hold(options);return polls<=4?new Response('invalid'):json({events:[],cursor:0});
  }});
- await client.restore();await client.work;
- assert.equal(polls,6);assert.equal(waits.length,4);assert.equal(health(client).malformed_failures,3);assert.equal(client.monitorState,'invalid_central_response');
+ await client.restore();await until(()=>polls===6);
+ assert.deepEqual(snapshots.map(value=>value.malformed_failures),[1,1,2,3]);assert.deepEqual(snapshots.map(value=>value.consecutive_failures),[1,2,3,4]);
+ assert.equal(health(client).malformed_failures,0);assert.equal(health(client).consecutive_failures,0);
+});
+
+test('a valid page resets the malformed count before a later malformed streak',async t=>{
+ let polls=0;const snapshots=[];
+ const {client}=await fixture(t,{retryDelayFn:async()=>{snapshots.push(health(client));},fetchFn:async(url,options)=>{
+  polls++;if(polls>6)return hold(options);return [3,6].includes(polls)?json({events:[],cursor:0}):new Response('invalid');
+ }});
+ await client.restore();await until(()=>polls===7);
+ assert.deepEqual(snapshots.map(value=>value.malformed_failures),[1,2,1,2]);assert.equal(health(client).malformed_failures,0);assert.equal(client.monitorState,'running');
 });
 
 for(const [page,reason] of [
@@ -269,7 +318,7 @@ test('protocol-stopped monitor exposes queued event and allows message fetch and
  const calls=[],handlers=new Map();
  const {client,store}=await fixture(t,{retryDelayFn:async()=>{},fetchFn:async(url,options)=>{
   calls.push(url);
-  if(url.includes('/events'))return new Response('invalid');
+  if(url.includes('/events'))return json({events:[],cursor:0});
   if(url.endsWith('/session'))return json({room:{id:'room'}});
   if(url.endsWith('/messages/message'))return json({id:'message',author:{id:'human'},text:'Queued mail'});
   if(url.endsWith('/ack')){assert.deepEqual(JSON.parse(options.body).event_ids,['event']);return json({});}

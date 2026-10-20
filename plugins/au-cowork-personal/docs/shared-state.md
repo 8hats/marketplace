@@ -75,8 +75,10 @@ jitter; a successful poll resets the backoff and malformed-response budget. Jitt
 spans 75–125% of the exponential base, capped at 30 seconds. Valid `Retry-After`
 seconds or HTTP dates supply a floor capped at 60 seconds. HTTP 408/425/429 and
 5xx except 501/505 retry before any JSON parsing, including HTML gateway bodies.
-Successful JSON/envelope/event-page-shape faults have a three-malformed-attempt
-budget; intervening transport errors do not erase it. Cursor/sequence integrity,
+Successful JSON/envelope/event-page-shape faults and non-JSON bodies on other
+non-401/403 statuses (proxy, captive or maintenance pages) retry indefinitely with
+jitter capped at 5 minutes and count as malformed failures; intervening transport
+errors do not reset that count. JSON application error codes stop. Cursor/sequence integrity,
 authorization, rotation and local storage/security failures remain immediately
 terminal. No automatic mutation replay is introduced. No manual reconnect is needed
 for a transient outage. After fixing a stopped monitor's cause,
