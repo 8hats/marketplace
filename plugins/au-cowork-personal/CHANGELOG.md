@@ -1,3 +1,9 @@
+## 2.1.2 — no wake for the agent's own echoes or repeated reminders
+
+- The room records a private command result for each command the agent sends (including messages). The connector remembers its last 200 command IDs and no longer wakes the agent for those echoes; a hint that arrives while the command is still in flight waits for its response first.
+- A room heartbeat no longer wakes the agent when the previous wake was also a heartbeat and nothing else woke it since. Messages from other participants, files, requests, reviews and status changes wake as before.
+- Only the wake is suppressed: every event stays staged, and `ac_messages`/`ac_files` still return all of it, including command results.
+
 ## 2.1.1 — the room watch never stops on a non-JSON or malformed response
 
 - A malformed HTTP 200 (for example an HTML maintenance or captive page) and a non-JSON body on any non-401/403 error status (for example a proxy HTML 404/400/413) no longer stop the watch. It retries indefinitely with jittered exponential backoff capped at 5 minutes (Retry-After floor unchanged), reports `state: reconnecting`, `live: false`, consecutive and malformed failure counts and a sanitized diagnostic, and returns to `running` with counts reset on the next valid page.

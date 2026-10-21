@@ -1,6 +1,6 @@
 # Personal Cowork durable Host adapter
 
-`@au-cowork/harness-personal` 2.1.1 (the room watch never stops on a non-JSON or malformed response) is a Cordis **Host** bundle for 8Hats/DeepSeek. Install this directory with the profile's plugin manager. Its generic patch only inserts `au-cowork-harness-personal`; it does not disable deployment-specific MCP/coordinator rows. The operator must disable the old competing bundle locally to avoid duplicate tools or connection leases.
+`@au-cowork/harness-personal` 2.1.2 (no wake for the agent's own echoes or repeated reminders) is a Cordis **Host** bundle for 8Hats/DeepSeek. Install this directory with the profile's plugin manager. Its generic patch only inserts `au-cowork-harness-personal`; it does not disable deployment-specific MCP/coordinator rows. The operator must disable the old competing bundle locally to avoid duplicate tools or connection leases.
 
 ## Deployment configuration
 

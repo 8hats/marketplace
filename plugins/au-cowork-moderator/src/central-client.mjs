@@ -184,6 +184,7 @@ export class CentralClient {
   try{lstatSync(path.resolve('.au-ours.json'));throw failure('legacy_configuration_rejected');}catch(error){if(error.code!=='ENOENT')throw error;}
   this.monitorFailures=0;this.malformedFailures=0;this.nextRetryMs=0;this.lastSuccessAt=null;this.monitorDiagnostic=null;this.eventResponseFacts=null;
   this.retryDelayFn=retryDelayFn;this.restoreError=null;this.fetchFn=fetchFn;this.store=store;this.origin=origin?centralOrigin(origin):undefined;this.onEvent=onEvent;this.row=null;this.monitor=null;this.work=null;this.listeners=new Set();this.stateQueue=Promise.resolve();this.monitorState='disconnected';this.transition=null;this.disconnecting=null;
+  this.inflight=0;this.held=[];this.heartbeatOnly=false;
  }
  assertHealthy(){if(this.row&&this.monitor&&!['running','reconnecting','backpressure','invalid_central_response','response_too_large','central_http_error'].includes(this.monitorState))throw failure(this.monitorState);}
  monitorHealth(){return {state:this.monitorState,live:this.monitorState==='running',pending_events:this.row?.staged.length??0,consecutive_failures:this.monitorFailures,malformed_failures:this.malformedFailures,next_retry_ms:this.nextRetryMs,last_success_at:this.lastSuccessAt,diagnostic:this.monitorDiagnostic};}
@@ -286,7 +287,17 @@ export class CentralClient {
   try{Promise.resolve(this.onEvent(value)).catch(()=>{});}catch{}
   for(const listener of this.listeners){try{listener(value);}catch{}}
  }
- wake(event){this.notify({status:'event',event:{event_id:event.event_id,kind:event.kind,resource:event.resource,seq:event.seq}});}
+ /**
+  * Room hints that carry no news do not wake the host; the events stay staged and readable.
+  * Own command echoes are skipped, and a heartbeat right after a heartbeat-only wake is skipped.
+  * Hints arriving while a mutation is in flight wait for it, so its command_id is known first.
+  */
+ wake(event){
+  if(this.inflight){this.held.push(event);return;}
+  if(event.resource?.kind==='command'&&this.row?.own_commands?.includes(event.resource.id))return;
+  if(isHeartbeat(event)&&this.heartbeatOnly)return;
+  this.heartbeatOnly=isHeartbeat(event);
+  this.notify({status:'event',event:{event_id:event.event_id,kind:event.kind,resource:event.resource,seq:event.seq}});}
  stopMonitoring(reason){
   if(['running','reconnecting','backpressure','disconnected'].includes(reason))reason='central_http_error';
   const code=/^[a-z_]{1,64}$/.test(reason??'')?reason:'state_storage_failed';
@@ -405,13 +416,15 @@ export class CentralClient {
   const fingerprint=createHash('sha256').update(JSON.stringify({route,body,headers,hash:bytes?createHash('sha256').update(bytes).digest('hex'):undefined})).digest('hex');
   let key;
   await this.update(row=>{row.pending_operations??={};key=row.pending_operations[fingerprint]??randomUUID();if(Object.keys(row.pending_operations).length>=100&&!row.pending_operations[fingerprint])throw failure('pending_operation_limit');row.pending_operations[fingerprint]=key;});
+  this.inflight++;
   try{
    const value=await this.request(route,{method:'POST',...(body?{body:{...body,idempotency_key:key}}:{bytes,headers:{...headers,'idempotency-key':key}})});
-   await this.update(row=>{delete row.pending_operations[fingerprint];});return value;
+   // ponytail: the last 200 own command IDs suppress their echo wakes; older echoes simply wake.
+   await this.update(row=>{delete row.pending_operations[fingerprint];if(typeof value?.command_id==='string')row.own_commands=[...(row.own_commands??[]),value.command_id].slice(-200);});return value;
   }catch(error){
    if(['invalid_request','forbidden','not_found','idempotency_conflict','sentence_reply_unsupported','file_reply_unsupported','file_too_large'].includes(error.code))await this.update(row=>{delete row.pending_operations[fingerprint];});
    error.operation_id=key;throw error;
-  }
+  }finally{if(!--this.inflight)for(const event of this.held.splice(0))this.wake(event);}
  }
  async messages(input={}){
   if(!this.row)throw failure('not_connected');
