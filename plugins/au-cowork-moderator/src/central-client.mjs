@@ -40,6 +40,16 @@ function responseFacts(route,response){
  return {endpoint,http_status:response?.status??null,content_type:['application/json','application/problem+json','text/html','text/plain','application/octet-stream','application/xml','text/xml'].includes(mime)?mime:null};
 }
 const requestDiagnostic=(route,response,reason)=>({...responseFacts(route,response),reason,timestamp:new Date().toISOString()});
+// A failed fetch keeps only a fixed category of its cause, never its message, host or address.
+export function networkCategory(error,timedOut=false){
+ const cause=error?.cause,code=String(cause?.code??cause?.errors?.[0]?.code??error?.code??'');
+ if(timedOut||['TimeoutError','AbortError'].includes(error?.name)||['TimeoutError','AbortError'].includes(cause?.name)||['ETIMEDOUT','UND_ERR_CONNECT_TIMEOUT','UND_ERR_HEADERS_TIMEOUT'].includes(code))return 'timeout';
+ if(['ENOTFOUND','EAI_AGAIN'].includes(code))return 'dns';
+ if(code==='ECONNREFUSED')return 'refused';
+ if(['ECONNRESET','UND_ERR_SOCKET','EPIPE'].includes(code))return 'reset';
+ if(/^(CERT_|ERR_TLS|ERR_SSL)|SELF_SIGNED|UNABLE_TO_VERIFY/.test(code))return 'tls';
+ return 'network';
+}
 const uuid=/^[a-f0-9-]{36}$/;
 const secret=/^[A-Za-z0-9_-]{43}$/;
 export function centralOrigin(value){
@@ -195,7 +205,7 @@ export class CentralClient {
   let response;
   const fail=(code,reason,details={})=>failure(code,{diagnostic:requestDiagnostic(route,response,reason),...details});
   try{response=await this.fetchFn(origin+'/api/v1/agent'+route,{method,redirect:'error',signal:combined,headers:{'X-Cowork-Connector':NAME+'/'+VERSION,...(credential?{authorization:'Bearer '+credential}:{}),...(body!==undefined?{'content-type':'application/json'}:{}),...headers},...(body!==undefined?{body:JSON.stringify(body)}:bytes!==undefined?{body:bytes}:{})});}
-  catch(error){if(signal?.aborted)throw fail('cancelled','cancelled');throw fail('central_unavailable','network_error');}
+  catch(error){if(signal?.aborted)throw fail('cancelled','cancelled');throw failure('central_unavailable',{diagnostic:{...requestDiagnostic(route,response,'network_error'),category:networkCategory(error,timeout.aborted)}});}
   if(route.startsWith('/events'))this.eventResponseFacts=responseFacts(route,response);
   if(signal?.aborted){cancelBestEffort(response.body);throw fail('cancelled','cancelled');}
   // Classify upstream status before requiring any successful JSON envelope.

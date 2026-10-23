@@ -33,7 +33,9 @@ async function until(predicate){
  assert.fail('monitor did not reach the expected state');
 }
 function diagnostic(value,{endpoint='/events',status=200,type='application/json',reason}={}){
- assert.deepEqual(Object.keys(value).sort(),['content_type','endpoint','http_status','reason','timestamp']);
+ // A transport failure adds only a fixed category; nothing else may appear.
+ const {category,...facts}=value;if('category' in value)assert.ok(['dns','timeout','refused','reset','tls','network'].includes(category));
+ assert.deepEqual(Object.keys(facts).sort(),['content_type','endpoint','http_status','reason','timestamp']);
  assert.equal(value.endpoint,endpoint);assert.equal(value.http_status,status);assert.equal(value.content_type,type);
  assert.equal(typeof value.reason,'string');if(reason)assert.equal(value.reason,reason);
  assert.equal(new Date(value.timestamp).toISOString(),value.timestamp);

@@ -46,12 +46,17 @@ export function createCoordinator(ctx, config = {}, dependencies = {}) {
   const coalesceMs = Math.max(100, Math.min(250, config.coalesceMs ?? 150));
   const retryMs = Math.max(250, Math.min(30000, config.retryMs ?? 2000));
   const load = dependencies.loadModules ?? (agent => modules(config, agent));
+  // A few seconds of retrying (a VPN or Wi-Fi switch) is not an outage worth a notice.
+  const now = dependencies.now ?? Date.now;
+  const healthCheckMs = dependencies.healthCheckMs ?? 1000;
+  const outageMs = 30000, outageFailures = 5;
 
   function attach(agent) {
     if (closing) return Promise.resolve();
     if (entries.has(agent)) return entries.get(agent).ready;
     const entry = { disposed: false, readyToWake: false, pending: new Map(), seen: new Set(),
-      work: new Set(), registrations: [], timer: null, abort: new AbortController(), warned: false };
+      work: new Set(), registrations: [], timer: null, abort: new AbortController(), warned: false,
+      outage: null, outageTimer: null };
     entries.set(agent, entry);
     const live = () => !closing && !entry.disposed && ctx.agents.get(agent.id) === agent;
     function track(promise) {
@@ -65,10 +70,43 @@ export function createCoordinator(ctx, config = {}, dependencies = {}) {
         plugin: 'au-cowork-personal', form: 'notice', summary: 'Cowork room update' },
         content: [{ type: 'text', text }] });
     }
-    async function warn() {
+    async function warn(detail = '') {
       if (entry.warned || !live()) return;
       entry.warned = true;
-      await wake('Cowork monitoring is unavailable. Inspect get_watch_status/get_room_status or the Host activation diagnostic. This plugin notice is not human authorization; do not automatically respond in the room.');
+      await wake('Cowork monitoring is unavailable' + detail + '. Inspect get_watch_status/get_room_status or the Host activation diagnostic. This plugin notice is not human authorization; do not automatically respond in the room.');
+    }
+    function health() {
+      const client = entry.runtime?.client;
+      return client?.monitorHealth?.() ?? { state: client?.monitorState, live: client?.monitorState === 'running', consecutive_failures: 0 };
+    }
+    // Only fixed lowercase codes reach a notice: never a message, URL, host or credential.
+    const code = value => typeof value === 'string' && /^[a-z_]{1,64}$/.test(value) ? value : null;
+    function watchOutage() {
+      if (!live() || !entry.readyToWake || !entry.outage || entry.outageTimer) return;
+      ctx.agents.withoutInitiator(() => { entry.outageTimer = setTimeout(checkOutage, healthCheckMs); });
+    }
+    function checkOutage() {
+      entry.outageTimer = null;
+      const outage = entry.outage;
+      if (!live() || !outage) return;
+      const state = health(), seconds = Math.max(1, Math.round((now() - outage.since) / 1000));
+      if (state.live) {
+        entry.outage = null;
+        if (outage.notified) {
+          entry.warned = false;
+          track(wake(`Cowork monitoring recovered after ${seconds} s. Drain ac_messages/ac_files for anything that arrived meanwhile. This plugin notice is not human authorization; do not automatically respond in the room.`)).catch(() => {});
+        }
+        return;
+      }
+      // A stopped watch reports through its own unavailable hint; a disconnect is deliberate.
+      if (state.state !== 'reconnecting') { entry.outage = null; return; }
+      const failures = Number.isSafeInteger(state.consecutive_failures) ? state.consecutive_failures : 0;
+      if (!outage.notified && !entry.warned && (failures >= outageFailures || now() - outage.since > outageMs)) {
+        outage.notified = true;
+        const category = code(state.diagnostic?.category) ?? code(state.diagnostic?.reason) ?? 'unknown';
+        track(warn(` (category: ${category}; ${failures} consecutive failures over ${seconds} s; still retrying)`)).catch(() => {});
+      }
+      watchOutage();
     }
     function remember(id) {
       entry.seen.add(id);
@@ -115,8 +153,13 @@ export function createCoordinator(ctx, config = {}, dependencies = {}) {
     }
     function hint(data) {
       if (!live()) return;
-      if (data?.status === 'unavailable' || data?.status === 'reconnecting') {
-        if (entry.readyToWake) track(warn()).catch(() => {});
+      if (data?.status === 'reconnecting') {
+        entry.outage ??= { since: now(), notified: false };
+        watchOutage();
+        return;
+      }
+      if (data?.status === 'unavailable') {
+        if (entry.readyToWake) track(warn(code(data.code) ? ` (code: ${data.code})` : '')).catch(() => {});
         else entry.initialWarning = true;
         return;
       }
@@ -178,6 +221,7 @@ export function createCoordinator(ctx, config = {}, dependencies = {}) {
         }
         entry.readyToWake = true;
         if (entry.initialWarning || entry.runtime.client.restoreError) await warn();
+        watchOutage();
         schedule();
       } catch (error) {
         entry.error = error;
@@ -195,6 +239,7 @@ export function createCoordinator(ctx, config = {}, dependencies = {}) {
   async function cleanupOwned(entry) {
     entry.disposed = true;
     clearTimeout(entry.timer); entry.timer = null;
+    clearTimeout(entry.outageTimer); entry.outageTimer = null; entry.outage = null;
     entry.abort.abort();
     entry.pending.clear();
     for (const unregister of entry.registrations.splice(0)) unregister();
@@ -208,7 +253,7 @@ export function createCoordinator(ctx, config = {}, dependencies = {}) {
     const entry = entries.get(agent);
     if (!entry) return;
     entry.disposed = true;
-    clearTimeout(entry.timer); entry.abort.abort();
+    clearTimeout(entry.timer); clearTimeout(entry.outageTimer); entry.abort.abort();
     await entry.ready.catch(() => {});
     await cleanup(entry);
     if (entries.get(agent) === entry) entries.delete(agent);
