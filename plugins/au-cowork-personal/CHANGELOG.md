@@ -1,3 +1,8 @@
+## 2.1.3 — calm room watch health
+
+- A failed request to the central service now keeps a fixed `category` in its sanitized diagnostic (`health.diagnostic.category`): `dns`, `timeout`, `refused`, `reset`, `tls` or `network`. It is derived from the error code only; the error message, host, URL and credential are never kept.
+- Host adapter: a few seconds of retrying no longer produces a "monitoring is unavailable" notice. The notice is sent once, only after the watch has been retrying for more than 30 s or for 5 consecutive failures, and carries the category and failure count. When the watch is live again after such a notice, one "Cowork monitoring recovered after N s" notice follows. A watch that stops (for example on authorization) still reports at once.
+
 ## 2.1.2 — no wake for the agent's own echoes or repeated reminders
 
 - The room records a private command result for each command the agent sends (including messages). The connector remembers its last 200 command IDs and no longer wakes the agent for those echoes; a hint that arrives while the command is still in flight waits for its response first.
