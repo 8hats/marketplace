@@ -42,7 +42,14 @@ const readQuery = object({ kind: z.enum(resourceKinds), id: id.optional(), curso
   if (v.kind !== "history" && (v.actor_id !== void 0 || v.resource_id !== void 0)) invalid("Filters require history");
 });
 const followUp = object({ text: nonempty(), responsible_actor_id: id, launch_condition: z.enum(["after_close", "manual_authorization", "after_decision"]), decision_id: id.optional() }).strict().refine((v) => v.launch_condition !== "after_decision" || v.decision_id !== void 0, "Decision required");
+const structureType = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/);
+const expectedStructure = object({revision:z.number().int().min(1).safe(),digest:z.string().regex(/^sha256:[a-f0-9]{64}$/)}).strict();
 const schemas = {
+  getConversationStructure: empty,
+  submitConversation: z.discriminatedUnion('kind',[
+    object({expected_structure:expectedStructure,kind:z.literal('node'),node_type:structureType,parent_node_id:id.optional(),anchor_message_id:id.optional(),title:nonempty(128),text:text(),relations:z.array(object({relation:structureType,node_id:id}).strict()).max(100).optional()}).strict(),
+    object({expected_structure:expectedStructure,kind:z.literal('reply'),reply_type:structureType,reply_to_message_id:id,text:text(),reply_to_sentence:z.number().int().positive().safe().optional()}).strict()
+  ]),
   submitArtifactResult: object({summary:nonempty(),artifacts:z.array(object({attachment_id:id,displayed_hash:hash}).strict()).min(1).max(20).refine((items)=>new Set(items.map(item=>item.attachment_id)).size===items.length,"Artifact attachment IDs must be unique"),idempotency_key:nonempty(128)}).strict(),
   requestFileReview: object({attachment_id:id,displayed_hash:hash,reviewer_actor_id:id,question:nonempty(),idempotency_key:nonempty(128)}).strict(),
   getSession: empty,
@@ -90,6 +97,8 @@ const schemas = {
   })
 };
 const consumerCommands = {
+  "consumer.ac.conversation.structure": "getConversationStructure",
+  "consumer.ac.conversation.submit": "submitConversation",
   "consumer.ac.artifact.result.submit": "submitArtifactResult",
   "consumer.ac.file.review.request": "requestFileReview",
   "consumer.ac.read": "readConsumer",

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {conversationToolError} from './conversation-errors.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
 import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -13,7 +14,7 @@ export {CentralClient,ConnectionStore} from './central-client.mjs';
 import {VERSION} from './version.mjs';
 export {VERSION};
 const encode=data=>({content:[{type:'text',text:JSON.stringify(data)}],structuredContent:data});
-const instructions='Connect with an HTTPS agent invitation URL or a saved connection_id. Watching automatically resumes after process restart in the same state directory; explicit disconnect stops watching. Credentials stay in private local storage. Read ac_messages and ac_files after connecting. wait_for_room_event waits without consuming mail and supports cancellation. MCP logging notifications are event hints; automatic model wake requires a Host adapter. Room commands use current inherited permissions. Review and result approval still require the human owner.';
+const instructions='Connect with an HTTPS agent invitation URL or a saved connection_id. Watching automatically resumes after process restart in the same state directory; explicit disconnect stops watching. Credentials stay in private local storage. Read ac_messages and ac_files after connecting. Read ac_conversation_structure before discussing a structured room; when enabled, use ac_conversation_submit with an explicit node/reply kind and configured type. Ordinary ac_message is rejected there. Structural acceptance is not proof of truth or consensus. wait_for_room_event waits without consuming mail and supports cancellation. MCP logging notifications are event hints; automatic model wake requires a Host adapter. Room commands use current inherited permissions. Review and result approval still require the human owner.';
 const messages={
  central_configuration_required:'Set AC_COWORK_URL to the central HTTPS origin, or provide an HTTPS invitation URL.',
  legacy_configuration_rejected:'Remove legacy daemon settings and configure AC_COWORK_URL.',
@@ -44,7 +45,7 @@ export async function createRuntime({client,injectedServer,clientOptions,profile
    if(busy&&!concurrent)return {...encode({code:'invalid_state',message:'Another room tool is active.',effect:'none'}),isError:true};
    if(!concurrent)busy=true;
    try{return encode(await run(schema.parse(input??{}),extra?.signal));}
-   catch(error){const code=error instanceof ZodError?'invalid_request':/^[a-z_]{1,64}$/.test(error?.code??'')?error.code:'internal_error';return {...encode({ok:false,error:{code,message:error.input_format?'Unsupported invitation URL. Use a canonical agent invitation or instruction link for the configured HTTPS service; update an older connector before trying an instruction link.':error.exchange_uncertain?'Invitation acceptance could not be confirmed or saved. Do not retry the invitation. Ask the inviting human to inspect membership before any replacement.':messages[code]??code,retryable:!error.exchange_uncertain&&['central_unavailable','database_busy','rate_limited'].includes(code)},...(error.operation_id?{operation_id:error.operation_id}:{}),request_id:requestId}),isError:true};}
+   catch(error){const code=error instanceof ZodError?'invalid_request':/^[a-z_]{1,64}$/.test(error?.code??'')?error.code:'internal_error';return {...encode({ok:false,error:{code,message:error.input_format?'Unsupported invitation URL. Use a canonical agent invitation or instruction link for the configured HTTPS service; update an older connector before trying an instruction link.':error.exchange_uncertain?'Invitation acceptance could not be confirmed or saved. Do not retry the invitation. Ask the inviting human to inspect membership before any replacement.':messages[code]??code,...conversationToolError(error),...(name==='ac_conversation_submit'&&error instanceof ZodError?{message:'Invalid typed submission. Read ac_conversation_structure; choose kind node with node_type, or kind reply with reply_type and reply_to_message_id, and supply expected_structure.',fields:error.issues.slice(0,30).map(issue=>({path:issue.path.join('.'),code:issue.code,message:issue.message.slice(0,512)})),effect:'none'}:{}),retryable:!error.exchange_uncertain&&['central_unavailable','database_busy','rate_limited'].includes(code)},...(error.operation_id?{operation_id:error.operation_id}:{}),request_id:requestId}),isError:true};}
    finally{if(!concurrent)busy=false;}
   });
  };
