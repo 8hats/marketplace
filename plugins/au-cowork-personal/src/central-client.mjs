@@ -81,9 +81,9 @@ export function invitation(value,configured){
  return {origin:url.origin,token};
 }
 /** Current room status and, while Done, the room closure instruction from the central session. */
-export function roomDiscussion(room){
+export function roomDiscussion(room,structure=room?.conversation_structure){
  if(!room||typeof room.status!=='string'||!['open','closed'].includes(room.discussion))return {};
- return {...(room.conversation_structure?{conversation_structure:room.conversation_structure}:{}),room_status:room.status,discussion:room.discussion,...(typeof room.instruction==='string'?{instruction:room.instruction}:{})};
+ return {...(structure?{conversation_structure:structure}:{}),room_status:room.status,discussion:room.discussion,...(typeof room.instruction==='string'?{instruction:room.instruction}:{})};
 }
 const isHeartbeat=event=>event.kind==='roomHeartbeatNotice';
 export class ConnectionStore {
@@ -274,7 +274,7 @@ export class CentralClient {
   // Share pending hints with catch-up so either path may notify, but never both.
   const current=await this.pruneHeartbeats(session);
   for(const event of this.row.staged)if(!isHeartbeat(event)||(current&&pendingHeartbeats.delete(event.event_id)))this.wake(event);
-  return {...this.publicRow(),...roomDiscussion(session?.room),monitoring_instructions:'Watching is durable across process restarts with the same state directory. Read ac_messages and ac_files; wait_for_room_event does not consume mail. Explicit disconnect stops watching.'};
+  return {...this.publicRow(),...roomDiscussion(session?.room,session?.conversation_structure),monitoring_instructions:'Watching is durable across process restarts with the same state directory. Read ac_messages and ac_files; wait_for_room_event does not consume mail. Explicit disconnect stops watching.'};
  }
  async disconnect({preserveWatch=false}={}){
   if(this.disconnecting)return this.disconnecting;

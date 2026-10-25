@@ -21,6 +21,9 @@ test('both agent profiles require explicit node/reply variants and current confi
   const reply={expected_structure,kind:'reply',reply_type:'comment',reply_to_message_id:'message',text:'Reply'};
   assert.deepEqual(submit.inputSchema.parse(reply),reply);
   for(const bad of [{text:'ordinary'}, {...node,kind:undefined},{...node,node_type:undefined},{...node,expected_structure:undefined},{...reply,reply_type:undefined},{...reply,reply_to_message_id:undefined},{...node,relations:[{relation:'addressed_by',target_node_id:'old-field'}]}])assert.equal(submit.inputSchema.safeParse(bad).success,false);
+  assert.equal(submit.inputSchema.safeParse({...node,text:'   '}).success,false);
+  assert.equal(submit.inputSchema.safeParse({...node,relations:Array.from({length:65},()=>({relation:'related_to',node_id:'existing'}))}).success,false);
+  const defaulted=submit.inputSchema.parse({...node,relations:undefined,title:'  trimmed title  '});assert.deepEqual(defaulted.relations,[]);assert.equal(defaulted.title,'trimmed title');
  }
 });
 test('typed tool sends canonical consumer command without reinterpreting relation direction',async()=>{
@@ -63,4 +66,22 @@ test('lost typed submission preserves its durable idempotency key',async()=>{
  const tool=centralTools(client).find(t=>t.name==='ac_conversation_submit');
  await assert.rejects(()=>tool.execute(node),{code:'central_unavailable'});assert.equal(Object.keys(client.row.pending_operations).length,1);
  await tool.execute(node);assert.equal(keys.length,2);assert.equal(keys[0],keys[1]);assert.equal(Object.keys(client.row.pending_operations).length,0);
+});
+test('received messages preserve the server structure and canonical relation endpoints',async()=>{
+ const structure={revision:1,kind:'node',type:'answer',node:{id:'answer',type:'answer',title:'Answer',parent_node_id:'question',depth:1},relations:[{relation:'addressed_by',source_node_id:'question',target_node_id:'answer'}]};
+ const client=clientFor(async url=>new Response(JSON.stringify({data:url.endsWith('/ack')?{}:{id:'message',author:{id:'other'},text:'body',at:'2026-10-25T00:00:00Z',structure}}),{headers:{'content-type':'application/json'}}));
+ client.row.staged=[{seq:1,event_id:'event',resource:{kind:'message',id:'message'}}];
+ const result=await client.messages();assert.deepEqual(result.messages[0].structure,structure);assert.equal(client.row.staged.length,0);
+});
+
+test('backend-shaped top-level session policy reaches connect and room status without drift',async()=>{
+ const policy={active:true,language:'cowork-structure/1',revision:3,digest:'sha256:'+'b'.repeat(64),yaml:'language: cowork-structure/1\n',rules_text:'Choose a configured type.',submit_example:{kind:'node'}};
+ const session={room:{id:'room',status:'active',discussion:'open'},conversation_structure:policy,capabilities:{commands:[]}};
+ const client=clientFor(async()=>new Response(JSON.stringify({data:session}),{headers:{'content-type':'application/json'}}));
+ const saved=client.row;client.row=null;
+ client.store={async init(){},async acquire(){},async load(){return {...saved,watch_enabled:true}},async save(){},async release(){}};
+ client.startMonitor=()=>{client.monitorState='running'};client.pruneHeartbeats=async()=>false;
+ const connected=await client.connect({connection_id:saved.connection_id});assert.deepEqual(connected.conversation_structure,policy);
+ const handlers=new Map(),runtime=await createRuntime({client,injectedServer:{registerTool:(name,_descriptor,handler)=>handlers.set(name,handler)}});
+ try{const status=await handlers.get('get_room_status')({});assert.deepEqual(status.structuredContent.data.conversation_structure,policy);}finally{await runtime.shutdown();}
 });
