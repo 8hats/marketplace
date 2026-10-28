@@ -66,8 +66,8 @@ export function createCoordinator(ctx, config = {}, dependencies = {}) {
     }
     async function wake(text) {
       if (!live()) return;
-      await agent.steer({ id: randomUUID(), role: 'user', source: { kind: 'plugin',
-        plugin: 'au-cowork-personal', form: 'notice', summary: 'Cowork room update' },
+      await agent.steer({ id: randomUUID(), role: 'user', source: { kind: 'au-cowork-personal',
+        form: 'notice', summary: 'Cowork room update' },
         content: [{ type: 'text', text }] });
     }
     async function warn(detail = '') {
