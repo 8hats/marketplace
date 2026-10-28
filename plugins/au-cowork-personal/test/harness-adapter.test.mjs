@@ -92,8 +92,9 @@ test('coalesces initial hints, bounded dedupe, suppresses own messages, ignores 
     for (const data of [f.event('own'), f.event('ext'), f.event('ext'), f.event('cmd', 'command'), f.event('room', 'room')]) await server.sendLoggingMessage({ data });
     await delay(180);
     assert.equal(a.messages.length, 1);
-    assert.equal(a.messages[0].source.kind, 'plugin');
-    assert.equal(a.messages[0].source.form, 'notice');
+    assert.deepEqual(a.messages[0].source, {
+      kind: 'au-cowork-personal', form: 'notice', summary: 'Cowork room update',
+    });
     assert.match(a.messages[0].content[0].text, /first/);
     assert.doesNotMatch(a.messages[0].content[0].text, /"own"|"room"/);
     await server.sendLoggingMessage({ data: f.event('ext') }); await delay(160);
