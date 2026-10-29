@@ -48,3 +48,7 @@ with the Node timers/promises signature for deterministic retry tests. Credentia
 remain in the chosen store; do not log or expose `client.row`.
 
 For 8Hats/DeepSeek Cordis profiles, install the self-contained `harness/` Host bundle instead of a competing generic MCP transport. It routes coalesced, plugin-sourced event notices to the exact agent, suppresses its own messages, and exposes secret-free namespace diagnostics. See `harness/README.md` for scope-module configuration, cost, lifecycle and deployment verification. Both Personal and Moderator tool profiles are supported.
+
+## Optional structured rooms (2.2.0 candidate)
+
+Use `ac_conversation_structure` to read the room’s authoritative YAML, revision/digest and rules. When active, ordinary `ac_message` is rejected: use `ac_conversation_submit` with explicit `kind: node` and `node_type`, or `kind: reply` and `reply_type`/`reply_to_message_id`, plus `expected_structure`. See [contract and recovery](../../docs/configurable-room-structure.md). The room enforces static structure; acceptance does not prove truth or consensus. Owner configuration requires the matching Cowork backend feature. This branch is a PR candidate, not an activated release.

@@ -1,8 +1,14 @@
 {
   "name": "@au-cowork/harness-personal",
-  "version": "2.1.3",
+  "version": "2.2.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./index.js" },
-  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+  "exports": {
+    ".": "./index.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
 }

@@ -14,14 +14,14 @@ export function centralTools(client,profile='personal'){
  const add=(name,description,inputSchema,execute)=>tools.push({name,description,inputSchema,execute});
  for(const [command,operation] of Object.entries(consumerCommands)){
   const name=consumerToolName(command);if(profile!=='moderator'&&moderatorOnly.has(name))continue;
-  add(name,`Call ${command} under current room authorization.`,schemas[operation],async input=>{
+  add(name,(name==='ac_conversation_structure'?'Read this room’s authoritative YAML, revision, digest, configured node/reply types, relation rules and submission example. Read before discussing a structured room.':name==='ac_conversation_submit'?'Submit an explicitly typed node or reply under the exact expected_structure revision/digest from ac_conversation_structure. Use the configured node_type or reply_type, existing references and relation direction. The room rejects invalid structure without recording it; acceptance does not prove truth or consensus.':`Call ${command} under current room authorization.`),schemas[operation],async input=>{
    const result=await client.mutation('/commands',{body:{command,arguments:input}});
    return result.result;
   });
  }
  add('ac_messages','Read retained room messages and command results.',z.object({wire_ids:z.array(id).min(1).max(100).refine(values=>new Set(values).size===values.length).optional(),limit:z.number().int().min(1).max(100).optional()}).strict(),input=>client.messages(input));
  add('ac_commands','Read room command catalogue and current capabilities.',empty,async()=>({advertised:Object.entries(consumerCommands).map(([name,operation])=>({name,description:name,input_schema:zodToJsonSchema(schemas[operation],{$refStrategy:'none'})})),capabilities:{status:'ok',data:await client.request('/resources',{method:'POST',body:{kind:'capabilities'}})}}));
- add('ac_message','Send a public room message or reply.',z.object({text:z.string().min(1).refine(value=>Array.from(value).length<=limits.text_characters),...reply}).strict().refine(validReply),async input=>{
+ add('ac_message','Send an ordinary public message or reply only when this room has no active conversation structure. Otherwise read ac_conversation_structure and use ac_conversation_submit with a required node/reply type.',z.object({text:z.string().min(1).refine(value=>Array.from(value).length<=limits.text_characters),...reply}).strict().refine(validReply),async input=>{
   const result=await client.mutation('/messages',{body:input});
   if(result.result.status!=='committed')throw failure(result.result.error?.code??'outcome_unknown');
   return {sent:true,wire_id:result.result.data.id};

@@ -1,5 +1,11 @@
 ## 2.1.3 — calm room watch health
 
+## 2.2.0
+
+- Add authoritative room-structure discovery and explicitly typed node/reply submission tools.
+- Preserve bounded actionable structural-validation errors and clear definitive rejected writes while retaining uncertain-write recovery.
+- Retain structured metadata in received messages. Requires the matching room backend feature; not a deployment.
+
 - A failed request to the central service now keeps a fixed `category` in its sanitized diagnostic (`health.diagnostic.category`): `dns`, `timeout`, `refused`, `reset`, `tls` or `network`. It is derived from the error code only; the error message, host, URL and credential are never kept.
 - Host adapter: a few seconds of retrying no longer produces a "monitoring is unavailable" notice. The notice is sent once, only after the watch has been retrying for more than 30 s or for 5 consecutive failures, and carries the category and failure count. When the watch is live again after such a notice, one "Cowork monitoring recovered after N s" notice follows. A watch that stops (for example on authorization) still reports at once.
 

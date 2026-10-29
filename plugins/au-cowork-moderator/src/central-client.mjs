@@ -1,3 +1,4 @@
+import {conversationErrorDetails} from './conversation-errors.mjs';
 import {NAME,VERSION} from './version.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {constants,lstatSync} from 'node:fs';
@@ -80,9 +81,9 @@ export function invitation(value,configured){
  return {origin:url.origin,token};
 }
 /** Current room status and, while Done, the room closure instruction from the central session. */
-export function roomDiscussion(room){
+export function roomDiscussion(room,structure=room?.conversation_structure){
  if(!room||typeof room.status!=='string'||!['open','closed'].includes(room.discussion))return {};
- return {room_status:room.status,discussion:room.discussion,...(typeof room.instruction==='string'?{instruction:room.instruction}:{})};
+ return {...(structure?{conversation_structure:structure}:{}),room_status:room.status,discussion:room.discussion,...(typeof room.instruction==='string'?{instruction:room.instruction}:{})};
 }
 const isHeartbeat=event=>event.kind==='roomHeartbeatNotice';
 export class ConnectionStore {
@@ -226,7 +227,7 @@ export class CentralClient {
   }
   if(!response.ok){let code=typeof payload?.error?.code==='string'&&/^[a-z_]{1,64}$/.test(payload.error.code)?payload.error.code:response.status===401?'unauthenticated':response.status===403?'forbidden':'central_http_error';
    if([401,403].includes(response.status)&&['central_unavailable','database_busy','rate_limited','invalid_central_response','response_too_large','central_http_error'].includes(code))code=response.status===401?'unauthenticated':'forbidden';
-   throw fail(code,[401,403].includes(response.status)?'http_auth':'json_error',{retry_after_ms:retryAfterMillis(response.headers.get('retry-after'))});}
+   throw fail(code,[401,403].includes(response.status)?'http_auth':'json_error',{retry_after_ms:retryAfterMillis(response.headers.get('retry-after')),...conversationErrorDetails(payload.error,response.status)});}
   if(payload===null||typeof payload!=='object'||Array.isArray(payload)||!Object.hasOwn(payload,'data'))throw fail('invalid_central_response','missing_data');return payload.data;
  }
  async update(change){
@@ -273,7 +274,7 @@ export class CentralClient {
   // Share pending hints with catch-up so either path may notify, but never both.
   const current=await this.pruneHeartbeats(session);
   for(const event of this.row.staged)if(!isHeartbeat(event)||(current&&pendingHeartbeats.delete(event.event_id)))this.wake(event);
-  return {...this.publicRow(),...roomDiscussion(session?.room),monitoring_instructions:'Watching is durable across process restarts with the same state directory. Read ac_messages and ac_files; wait_for_room_event does not consume mail. Explicit disconnect stops watching.'};
+  return {...this.publicRow(),...roomDiscussion(session?.room,session?.conversation_structure),monitoring_instructions:'Watching is durable across process restarts with the same state directory. Read ac_messages and ac_files; wait_for_room_event does not consume mail. Explicit disconnect stops watching.'};
  }
  async disconnect({preserveWatch=false}={}){
   if(this.disconnecting)return this.disconnecting;
@@ -432,7 +433,7 @@ export class CentralClient {
    // ponytail: the last 200 own command IDs suppress their echo wakes; older echoes simply wake.
    await this.update(row=>{delete row.pending_operations[fingerprint];if(typeof value?.command_id==='string')row.own_commands=[...(row.own_commands??[]),value.command_id].slice(-200);});return value;
   }catch(error){
-   if(['invalid_request','forbidden','not_found','idempotency_conflict','sentence_reply_unsupported','file_reply_unsupported','file_too_large'].includes(error.code))await this.update(row=>{delete row.pending_operations[fingerprint];});
+   if(error.domain_effect==='none'||['invalid_request','forbidden','not_found','idempotency_conflict','sentence_reply_unsupported','file_reply_unsupported','file_too_large'].includes(error.code))await this.update(row=>{delete row.pending_operations[fingerprint];});
    error.operation_id=key;throw error;
   }finally{if(!--this.inflight)for(const event of this.held.splice(0))this.wake(event);}
  }
@@ -445,7 +446,7 @@ export class CentralClient {
    try{
    if(event.resource.kind==='message'){
     const message=await this.request('/messages/'+encodeURIComponent(event.resource.id));
-    messages.push({wire_id:message.id,from:message.author,direction:'in',message_kind:'text',body:message.text,text:message.text,at:message.at,...(message.reply_to?{reply_to:{wire_id:message.reply_to.id,...(message.reply_to_sentence?{sentence:message.reply_to_sentence}:{})}}:{})});
+    messages.push({wire_id:message.id,from:message.author,direction:'in',message_kind:'text',body:message.text,text:message.text,at:message.at,...(message.structure?{structure:message.structure}:{}),...(message.reply_to?{reply_to:{wire_id:message.reply_to.id,...(message.reply_to_sentence?{sentence:message.reply_to_sentence}:{})}}:{})});
    }else if(event.resource.kind==='command'){
     const command=await this.request('/commands/'+encodeURIComponent(event.resource.id));command_results.push({request_wire_id:command.command_id,wire_id:event.event_id,result:command.result});
    }else messages.push({wire_id:event.event_id,message_kind:'room_event',direction:'in',body:JSON.stringify(event),from:{id:this.row.room_id,name:this.row.room_name}});
