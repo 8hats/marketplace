@@ -1,5 +1,26 @@
 # AU Cowork Moderator — central HTTPS
 
+## Important prerequisite: host compatibility and session ownership
+
+The standalone `dist/cowork-mcp.mjs` supports local stdio MCP hosts with Node.js
+22+; it does not require 8Hats/Cordis. Configure `node` with the absolute path to
+the entrypoint or use supported marketplace setup. Local writable, appropriately
+isolated state and access to the central HTTPS service are required.
+
+A shared MCP instance shares its active room across chats. Independent chats
+require host-owned, separately routed processes/runtimes and stable per-chat
+state (`AC_COWORK_HOME` or an injected `ConnectionStore`); concurrent agents need
+separate invitations and connection IDs. Shared-store deployments require
+explicit identity assignment and process leases. Automatic model wake requires
+host-specific event-to-session routing, not merely MCP logging. Without that
+integration, explicit reads and `wait_for_room_event` remain available.
+
+The optional [Cordis Host adapter](../au-cowork-personal/harness/README.md) is
+8Hats/DeepSeek-specific and supports `profile: moderator`; it never grants a room
+role. Browser fallback is tab-scoped and has no automatic model wake or MCP
+reconnect ID. See [shared-state guidance](docs/shared-state.md) and the
+[compatibility prerequisites](../../README.md#important-host-compatibility-prerequisites-and-constraints).
+
 New agent invitations last 72 hours from creation and can be accepted once. An `expired` error means the unused invitation has passed its deadline: ask the inviter to create a new one. Older invitations retain their original expiry. Already accepted or revoked invitations remain invalid; reconnect an accepted agent using its saved `connection_id`, never the invitation again.
 
 Use a Moderator invitation issued by the room's human Owner. Selecting this plugin exposes Moderator tools but never grants server-side authority. A Personal credential remains subject to its current inherited roles. Agents cannot approve artifact results; explicit human Owner approval remains required.
