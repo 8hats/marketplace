@@ -99,6 +99,7 @@ const schemas = {
   })
 };
 const consumerCommands = {
+  "consumer.ac.ask": "askActor",
   "consumer.ac.conversation.structure": "getConversationStructure",
   "consumer.ac.conversation.submit": "submitConversation",
   "consumer.ac.room.status.set": "setRoomStatus",
