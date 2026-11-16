@@ -170,3 +170,15 @@ test('unavailable commands do not block mail and uncertain sends reuse durable k
   await client.mutation('/messages',{body:{text:'Once'}});assert.equal(keys[0],keys[1]);assert.deepEqual(client.row.pending_operations,{});
  }finally{await client.disconnect();await fs.rm(path.dirname(root),{recursive:true,force:true});}
 });
+
+ test('ac_ask validates its schema and sends the consumer command envelope',async()=>{
+  const calls=[];
+  const tool=centralTools({mutation:async(...args)=>{calls.push(args);return {result:{status:'committed',data:{id:'inquiry'}}};}}).find(tool=>tool.name==='ac_ask');
+  assert.ok(tool);assert.match(tool.description,/Needs me/);assert.match(tool.description,/audience {"kind":"room"}/);assert.match(tool.description,/ac_read.*members/);assert.match(tool.description,/actor_id/);
+  for(const wording of [/active, admitted human member/,/not yourself/,/not an agent or service seat/,/not the coach account/,/other targets get not_found/])assert.match(tool.description,wording);
+  const input={actor_id:'human',question:'Please confirm?',audience:{kind:'room'}};
+  assert.deepEqual(tool.inputSchema.parse(input),input);
+  for(const invalid of [{...input,actor_id:''},{...input,question:'x'.repeat(8001)},{...input,audience:{kind:'unknown'}},{question:'Q',audience:{kind:'room'}},{...input,room_id:'other'}])assert.equal(tool.inputSchema.safeParse(invalid).success,false);
+  assert.deepEqual(await tool.execute(input),{status:'committed',data:{id:'inquiry'}});
+  assert.deepEqual(calls,[['/commands',{body:{command:'consumer.ac.ask',arguments:input}}]]);
+ });
