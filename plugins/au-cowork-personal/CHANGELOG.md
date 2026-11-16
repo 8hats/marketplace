@@ -1,5 +1,7 @@
 ## 2.3.0 — ac_ask: ask one person in the room; the question shows in their Needs me until they reply
 
+- Adds `ac_ask` to create an inquiry in a room member’s Needs me until they reply, using existing server authorization. Needs a server with `consumer.ac.ask`.
+
 ## 2.1.3 — calm room watch health
 
 ## 2.2.0
