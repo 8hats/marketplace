@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import test from 'node:test';
-import {CentralClient} from '../src/central-client.mjs';
+import {CentralClient,ConnectionStore} from '../src/central-client.mjs';
+import {tmpdir} from 'node:os';
+import {join,dirname} from 'node:path';
 import {createRuntime} from '../src/server.mjs';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {InMemoryTransport} from '@modelcontextprotocol/sdk/inMemory.js';
@@ -32,7 +34,8 @@ test('legacy supplied Moderator inputs are rejected before connecting',()=>{
 });
 
 test('default Moderator MCP exposes all Moderator tools without granting client authority',async()=>{
- const client=new CentralClient({fetchFn:async()=>{throw Error('unexpected network');}});
+ const temporary=await fs.mkdtemp(join(tmpdir(),'moderator-manifest-'));
+ const client=new CentralClient({store:new ConnectionStore(join(temporary,'private')),fetchFn:async()=>{throw Error('unexpected network');}});
  const runtime=await createRuntime({client}),host=new Client({name:'moderator-contract-test',version:'1'});
  const [serverTransport,clientTransport]=InMemoryTransport.createLinkedPair();
  try{
@@ -48,5 +51,5 @@ test('default Moderator MCP exposes all Moderator tools without granting client 
   assert.equal(names.includes('ac_join'),false);
   const denied=await host.callTool({name:'ac_review_publish',arguments:{round_id:'round'}});
   assert.equal(denied.isError,true);assert.equal(JSON.parse(denied.content[0].text).error.code,'not_connected');
- }finally{await host.close();await runtime.shutdown();}
+ }finally{await host.close();await runtime.shutdown();assert.equal(dirname(temporary),tmpdir());assert.ok(temporary.startsWith(join(tmpdir(),'moderator-manifest-')));await fs.rm(temporary,{recursive:true,force:true});}
 });

@@ -32,7 +32,7 @@ const decision = z.discriminatedUnion("action", [
   ...["confirm_instruction", "reject_instruction", "authorize_disconnect", "decline_disconnect"].map((action) => object({ ...decisionBase, action: z.literal(action), payload: empty }).strict())
 ]);
 const resourceKinds = ["artifact_result", "attachment", "file_review", "capabilities", "room", "context", "members", "invitation", "inquiry", "version", "review", "remark", "request", "proposal", "result", "history", "source"];
-const consumerKinds = ["artifact_result", "members", "attachment", "file_review", "capabilities", "room", "context", "version", "review", "remark", "request", "proposal", "result", "history", "source"];
+const consumerKinds = ["inquiry", "artifact_result", "members", "attachment", "file_review", "capabilities", "room", "context", "version", "review", "remark", "request", "proposal", "result", "history", "source"];
 const singleton = /* @__PURE__ */ new Set(["capabilities", "room", "context"]);
 const readQuery = object({ kind: z.enum(resourceKinds), id: id.optional(), cursor: nonempty().optional(), limit: z.number().int().min(1).max(100).optional(), actor_id: id.optional(), resource_id: id.optional() }).strict().superRefine((v, c) => {
   const invalid = (message) => c.addIssue({ code: "custom", message });
@@ -87,6 +87,7 @@ const schemas = {
   postMessage: object({ text: text(), refs, audience }).strict(),
   replyMessage: object({ text: text(), refs, reply_to: ref, audience }).strict(),
   askActor: object({ actor_id: id, question: text(), audience }).strict(),
+  actInquiry: object({ inquiry_id:id, expected_revision:z.number().int().nonnegative().safe(), idempotency_key:nonempty(128), action:z.enum(['reply','progress','resolve']), text:nonempty() }).strict(),
   annotateHistory: object({ event_id: id, text: text(), reason, evidence: refs }).strict(),
   decideAnnotation: object({ annotation_id: id, action: z.enum(["accept", "reject"]), reason }).strict(),
   recordIntervention: object({ agent_id: id, kind: z.enum(["challenge", "probe", "closed_warning"]), reason, evidence: refs }).strict(),
@@ -100,6 +101,7 @@ const schemas = {
 };
 const consumerCommands = {
   "consumer.ac.ask": "askActor",
+  "consumer.ac.inquiry.act": "actInquiry",
   "consumer.ac.conversation.structure": "getConversationStructure",
   "consumer.ac.conversation.submit": "submitConversation",
   "consumer.ac.room.status.set": "setRoomStatus",

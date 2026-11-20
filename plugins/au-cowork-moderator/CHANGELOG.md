@@ -1,3 +1,8 @@
+## 2.4.0 — explicit question lifecycle
+
+- Add `ac_inquiry_act` for permitted replies, progress and resolution using the canonical revision and a stable idempotency key. Reads expose the accountable turn; answers keep lifecycle questions open until resolved.
+- Align Personal, Moderator and Personal Host bundle versions and rebuild their shipped runtimes. Requires the matching server `consumer.ac.inquiry.act` contract; this candidate does not activate installed connectors or deploy the server.
+
 ## 2.3.0 — ac_ask: ask one person in the room; the question shows in their Needs me until they reply
 
 - Adds `ac_ask` to create an inquiry in a room member’s Needs me until they reply, using existing server authorization. Needs a server with `consumer.ac.ask`.

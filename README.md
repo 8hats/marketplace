@@ -104,6 +104,16 @@ CI runs both plugins' full `node --test` suites on Linux and Windows. Personal v
 --exit-code -- dist`), the Harness declaration test, and a secret scan on
 every push.
 
+### Real-backend question lifecycle check
+
+With Node 22, OpenSSL and dependencies already installed in both checkouts, build both plugins, then run from this repository (replace `/path/to/cowork` with the matching lifecycle-enabled Cowork checkout):
+
+```sh
+node --import /path/to/cowork/backend/node_modules/tsx/dist/loader.mjs scripts/inquiry-backend-check.mjs /path/to/cowork
+```
+
+This runs the shipped Personal and Moderator stdio bundles against the actual Cowork Application, SQLite and HTTPS agent handler with its configured policies. It checks version agreement, identical Personal/Host runtime bytes, ask/read, human answer, agent follow-up, idempotent replay, granted progress and requester closure. The human answer and helper grant use supported domain operations, not a browser. Its fresh loopback server, database, invitations and connector state are disposable and cleaned up; it never connects an installed plugin or deployed room. This cross-repository check is explicit, not part of the standalone marketplace CI suite.
+
 ## Releasing and contributing
 
 1. **Releasing a plugin**: edit under `plugins/<name>`, bump `version` in its
