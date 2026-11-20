@@ -1,6 +1,6 @@
 {
   "name": "au-cowork-moderator",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "Room collaboration through the central Cowork HTTPS service.",
   "author": {
     "name": "Agent University"

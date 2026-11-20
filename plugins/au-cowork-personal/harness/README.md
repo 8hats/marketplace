@@ -1,6 +1,6 @@
 # Personal Cowork durable Host adapter
 
-`@au-cowork/harness-personal` 2.3.0 (adds `ac_ask`; calm room watch health since 2.1.3) is a Cordis **Host** bundle for 8Hats/DeepSeek. Install this directory with the profile's plugin manager. Its generic patch only inserts `au-cowork-harness-personal`; it does not disable deployment-specific MCP/coordinator rows. The operator must disable the old competing bundle locally to avoid duplicate tools or connection leases.
+`@au-cowork/harness-personal` 2.4.0 (adds canonical inquiry reads and `ac_inquiry_act`; calm room watch health since 2.1.3) is a Cordis **Host** bundle for 8Hats/DeepSeek. Install this directory with the profile's plugin manager. Its generic patch only inserts `au-cowork-harness-personal`; it does not disable deployment-specific MCP/coordinator rows. The operator must disable the old competing bundle locally to avoid duplicate tools or connection leases.
 
 ## Deployment configuration
 
